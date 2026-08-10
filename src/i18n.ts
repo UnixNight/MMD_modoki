@@ -100,6 +100,13 @@ export const applyI18nToDom = (root: ParentNode = document): void => {
         if (!key) return;
         element.textContent = t(key);
     });
+    // These labels intentionally ellipsize in the compact bottom panel. Keep
+    // the localized full name available when the panel is too narrow to show it.
+    root.querySelectorAll<HTMLElement>(".light-label[data-i18n]").forEach((element) => {
+        const key = element.dataset.i18n;
+        if (!key || element.hasAttribute("data-i18n-title")) return;
+        element.title = t(key);
+    });
     applyKeyToAttribute(root, "data-i18n-title", "title");
     applyKeyToAttribute(root, "data-i18n-aria-label", "aria-label");
     applyKeyToAttribute(root, "data-i18n-placeholder", "placeholder");
