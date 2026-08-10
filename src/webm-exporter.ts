@@ -511,7 +511,7 @@ const selectWebmVideoEncoding = async (
     preferredCodec: "auto" | WebmVideoCodec,
 ): Promise<SelectedWebmVideoEncoding | null> => {
     const codecOrder: WebmVideoCodec[] = preferredCodec === "auto"
-        ? ["vp8", "vp9"]
+        ? ["vp9", "vp8"]
         : [preferredCodec];
     for (const codec of codecOrder) {
         if (await canEncodeVideo(codec, {
@@ -544,18 +544,18 @@ const estimateVideoBitrate = (width: number, height: number, fps: number): numbe
     const isHighFps = fps > 30;
 
     if (megapixels <= 2.2) {
-        return isHighFps ? 12_000_000 : 8_000_000;
-    }
-    if (megapixels <= 3.8) {
         return isHighFps ? 24_000_000 : 16_000_000;
     }
+    if (megapixels <= 3.8) {
+        return isHighFps ? 45_000_000 : 30_000_000;
+    }
     if (megapixels <= 8.6) {
-        return isHighFps ? 53_000_000 : 35_000_000;
+        return isHighFps ? 80_000_000 : 60_000_000;
     }
 
-    const bitratePerMegapixel = isHighFps ? 6_500_000 : 4_200_000;
+    const bitratePerMegapixel = isHighFps ? 10_000_000 : 7_500_000;
     const fallbackBitrate = megapixels * bitratePerMegapixel;
-    return Math.max(8_000_000, Math.min(80_000_000, Math.round(fallbackBitrate)));
+    return Math.max(16_000_000, Math.min(120_000_000, Math.round(fallbackBitrate)));
 };
 
 const estimateAudioBitrate = (channelCount: number): number => {

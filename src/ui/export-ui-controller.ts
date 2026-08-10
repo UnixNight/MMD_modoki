@@ -8,6 +8,7 @@ import { t } from "../i18n";
 import { logError, logInfo } from "../app-logger";
 import type { MmdManager } from "../mmd-manager";
 import { PngEncoderWebWorkerPool } from "../output/png-encoder-web-worker-pool";
+import { scaleExportDimensions } from "../output/export-dimensions";
 import type { EditorAction } from "../actions/types";
 import type {
     MmdModokiProjectFileV1,
@@ -87,6 +88,13 @@ export const OUTPUT_FPS_OPTIONS: ReadonlyArray<{ value: string; label: string }>
     { value: "24", label: "24" },
     { value: "30", label: "30" },
     { value: "60", label: "60" },
+];
+
+export const OUTPUT_QUALITY_SCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: "1", label: "1x" },
+    { value: "1.5", label: "1.5x" },
+    { value: "2", label: "2x" },
+    { value: "4", label: "4x" },
 ];
 
 const FIXED_WEBM_CAPTURE_MODE: WebmCaptureMode = "rgba-surface";
@@ -205,7 +213,7 @@ export class ExportUiController {
         qualityScale: 1,
         fps: 30,
         includeAudio: false,
-        preferredVideoCodec: "vp8",
+        preferredVideoCodec: "auto",
         captureMode: "rgba-surface",
         usePlaybackRange: false,
         startFrame: 0,
@@ -581,6 +589,11 @@ export class ExportUiController {
         }
 
         const outputSettings = this.getOutputSettings();
+        const captureDimensions = scaleExportDimensions(
+            outputSettings.width,
+            outputSettings.height,
+            outputSettings.qualityScale,
+        );
         const totalOutputFrames = Math.max(1, Math.round((totalTimelineFrames / 30) * outputSettings.fps));
         logInfo("webm", "export requested", {
             startFrame,
@@ -588,13 +601,13 @@ export class ExportUiController {
             totalTimelineFrames,
             totalOutputFrames,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             qualityScale: outputSettings.qualityScale,
         });
         const defaultFileName = this.buildWebmFileName(
-            outputSettings.width,
-            outputSettings.height,
+            captureDimensions.width,
+            captureDimensions.height,
             startFrame,
             endFrame,
         );
@@ -621,8 +634,8 @@ export class ExportUiController {
             startFrame,
             endFrame,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             includeAudio,
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,
@@ -638,8 +651,8 @@ export class ExportUiController {
             startFrame,
             endFrame,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             includeAudio,
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,

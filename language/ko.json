@@ -686,6 +686,7 @@
     "dialog.webmExport.aspect": "Aspect",
     "dialog.webmExport.longSide": "Long side",
     "dialog.webmExport.size": "Size",
+    "dialog.webmExport.qualityScale": "렌더 배율",
     "dialog.webmExport.fps": "FPS",
     "dialog.webmExport.includeAudio": "Include audio",
     "dialog.webmExport.usePlaybackRange": "Use playback range",

@@ -6,7 +6,7 @@
 - 出力 fps は `24 / 30 / 60`
 - `音声あり` を ON にすると、読み込み済み音声を mux する
 - codec 選択 UI は通常表示しない
-- 内部既定 codec は `VP8`
+- 内部既定 codec は `auto`（VP9 を優先し、非対応時は VP8）
 - 通常のキャプチャ方式は共通 `RGBA Surface`
 - `readPixels / canvas / WebGPU copy` は比較・診断用 legacy 経路として内部に残す
 - 出力中は main UI を lock し、busy overlay に簡略進捗を表示する
@@ -23,6 +23,7 @@
 - 比率
 - 長辺
 - 幅 / 高さ
+- レンダー倍率（1x / 1.5x / 2x / 4x。WebM では幅 / 高さに乗算し、上限は 8192px）
 - FPS
 - `音声あり`
 - `PNG画像`
@@ -32,7 +33,7 @@
 
 - `PNG Seq` は UI から外している
 - codec 選択 UI も外している
-- 新規既定値では内部的に `VP8` を使う
+- 新規既定値では VP9 を優先し、利用できない環境では VP8 へ fallback する
 - キャプチャ方式の既定値は `rgba-surface`
 - legacy 経路は通常 UI から選択しない
 
@@ -152,12 +153,12 @@ MMD タイムラインは 30fps 基準で扱う。
 
 既定 bitrate:
 
-- 1080p30: `8 Mbps`
-- 1080p60: `12 Mbps`
-- 1440p30: `16 Mbps`
-- 1440p60: `24 Mbps`
-- 4K30: `35 Mbps`
-- 4K60: `53 Mbps`
+- 1080p30: `16 Mbps`
+- 1080p60: `24 Mbps`
+- 1440p30: `30 Mbps`
+- 1440p60: `45 Mbps`
+- 4K30: `60 Mbps`
+- 4K60: `80 Mbps`
 
 補足:
 
