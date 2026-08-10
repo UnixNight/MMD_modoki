@@ -17,6 +17,8 @@ MMD 寄せの挙動として、ユーザーが再生停止中または任意フ�
 - snapshot には model ごとの `rigidBodyStates`、rigid body ごとの `transformMatrix`、`linearVelocity`、`angularVelocity` を含める。
 - exporter 側は project import と `seekTo(startFrame)` の後、`setExternalPlaybackSimulationEnabled(true)` を先に実行してから snapshot を復元する。
 - 復元直前に babylon-mmd runtime の pending physics initialization queue を clear する。
+- snapshot を復元できた場合、出力中は runtime の `autoPhysicsInitialization` を無効にする。frame 0 での `playAnimation()` がモデルを初期化 queue に再登録し、2 枚目で復元済み剛体を上書きするのを防ぐためである。
+- 同じ場合の最初の render は厳密な `0 ms` ではなく微小 delta で行う。wasm integrated physics の `PhysicsClock` は `0 ms` を `1/60 s` に置き換えるため、出力フレーム 0 が意図せず物理を 1 step 進めないようにする。
 - 復元後は `syncBones()` により、剛体状態をモデルの表示姿勢へ同期してから capture へ進む。
 
 ## 実装箇所
@@ -56,8 +58,8 @@ WebM exporter 側では、以下の順序を守る。
 
 - snapshot は出力開始時の初期状態だけを渡す。出力中の物理は exporter 側 runtime が通常どおり進める。
 - project save / load の互換データには含めない。
-- `capturedFrame` と出力 `startFrame` が大きくずれている場合の見た目の妥当性は未検証。
-- 基本用途は、現在のビューポート状態からそのまま動画出力を始めるケースとする。
+- `capturedFrame` が出力 `startFrame` と一致する場合だけ snapshot を渡す。一致しない場合は、別 renderer が出力開始 frame の pose から物理を初期化する。中間 frame で採取した剛体状態を frame 0 の出力へ混ぜると、拘束と骨姿勢が不整合になり、先頭で大きく跳ねるためである。
+- 基本用途は、出力開始 frame を表示して物理を馴染ませた後に動画出力するケースとする。
 
 ## 関連メモ
 

@@ -635,7 +635,13 @@ export class ExportUiController {
             this.showToast(t("toast.audioMissingForWebm"), "info");
         }
         project.assets.audioPath = null;
-        const initialPhysicsState = this.mmdManager.captureWebmInitialPhysicsState();
+        const capturedPhysicsState = this.mmdManager.captureWebmInitialPhysicsState();
+        // Rigid-body transforms are only meaningful for the animation frame at
+        // which they were captured. Do not inject a mid-timeline viewport state
+        // into an export that starts at another frame (commonly frame 0).
+        const initialPhysicsState = capturedPhysicsState?.capturedFrame === startFrame
+            ? capturedPhysicsState
+            : null;
         logInfo("webm", "export launching", {
             outputFilePath,
             startFrame,
@@ -649,6 +655,9 @@ export class ExportUiController {
             captureMode,
             initialPhysicsModels: initialPhysicsState?.models.length ?? 0,
             initialPhysicsFrame: initialPhysicsState?.capturedFrame ?? null,
+            skippedInitialPhysicsFrame: capturedPhysicsState && !initialPhysicsState
+                ? capturedPhysicsState.capturedFrame
+                : null,
         });
 
         this.setStatus(t("busy.webmExportLaunching"), true);

@@ -70,10 +70,16 @@ type ExportRuntimeInternals = {
     camera: Camera;
     scene: Scene;
     mmdRuntime: {
+        autoPhysicsInitialization?: boolean;
         playAnimation: () => Promise<void>;
         pauseAnimation: () => void;
     };
 };
+
+// babylon-mmd's integrated PhysicsClock substitutes a 1/60 s step when the
+// engine delta is exactly zero. Keep the initial snapshot render effectively
+// stationary while still allowing Babylon to render the scene.
+const SNAPSHOT_INITIAL_RENDER_DELTA_MS = 0.001;
 
 type WebGpuCaptureEngineInternals = {
     _getCurrentRenderPassWrapper?: () => unknown;
@@ -775,6 +781,12 @@ export async function runWebmExportJob(
         if (request.initialPhysicsState && !restoredInitialPhysics) {
             console.warn("[WebM] Initial physics snapshot was provided but could not be restored.");
         }
+        if (restoredInitialPhysics) {
+            // playAnimation() at frame 0 queues automatic physics initialization.
+            // That queue runs on the next render (the second encoded frame) and
+            // overwrites the rigid-body snapshot we just restored.
+            exportRuntimeInternals.mmdRuntime.autoPhysicsInitialization = false;
+        }
         if (captureMode !== "readpixels") {
             updateStatus(callbacks, "Preparing post effects for WebM capture...", "initializing");
             const postEffectReady = await mmdManager.waitForPostEffectBackendReadyForCapture();
@@ -1021,9 +1033,13 @@ export async function runWebmExportJob(
                     const renderStartedAt = performance.now();
                     if (!playbackStarted) {
                         if (captureMode === "readpixels") {
-                            mmdManager.renderOnce(0);
+                            mmdManager.renderOnce(
+                                restoredInitialPhysics ? SNAPSHOT_INITIAL_RENDER_DELTA_MS : 0,
+                            );
                         } else {
-                            mmdManager.renderOnceForCapture(0);
+                            mmdManager.renderOnceForCapture(
+                                restoredInitialPhysics ? SNAPSHOT_INITIAL_RENDER_DELTA_MS : 0,
+                            );
                         }
                         playbackStarted = true;
                     } else {
