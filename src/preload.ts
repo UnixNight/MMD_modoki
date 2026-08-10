@@ -111,6 +111,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('export:takeWebmJob', jobId),
     finishWebmExportJob: (jobId: string) =>
         ipcRenderer.invoke('export:finishWebmJob', jobId),
+    cancelWebmExports: () =>
+        ipcRenderer.invoke('export:cancelWebmExports'),
+    isWebmExportCancellationRequested: (jobId: string) =>
+        ipcRenderer.invoke('export:isWebmCancellationRequested', jobId),
     reportWebmExportProgress: (progress: WebmExportProgress) => {
         ipcRenderer.send('export:webmProgress', progress);
     },
@@ -130,6 +134,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('export:webmProgress', listener);
         return () => {
             ipcRenderer.removeListener('export:webmProgress', listener);
+        };
+    },
+    onWebmExportCancel: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('export:webmCancel', listener);
+        return () => {
+            ipcRenderer.removeListener('export:webmCancel', listener);
         };
     },
     logDebug: (scope: AppLogScope, message: string, data?: AppLogData) => {

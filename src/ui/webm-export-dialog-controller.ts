@@ -3,6 +3,7 @@ import type { EditorAction } from "../actions/types";
 import {
     OUTPUT_ASPECT_OPTIONS,
     OUTPUT_FPS_OPTIONS,
+    OUTPUT_QUALITY_SCALE_OPTIONS,
     OUTPUT_SIZE_PRESET_OPTIONS,
     type WebmExportSettingsAdapter,
 } from "./export-ui-controller";
@@ -25,6 +26,7 @@ export class WebmExportDialogController implements PopupContentController {
     private sizePresetSelect: HTMLSelectElement | null = null;
     private widthInput: HTMLInputElement | null = null;
     private heightInput: HTMLInputElement | null = null;
+    private qualityScaleSelect: HTMLSelectElement | null = null;
     private fpsSelect: HTMLSelectElement | null = null;
     private includeAudioInput: HTMLInputElement | null = null;
     private usePlaybackRangeInput: HTMLInputElement | null = null;
@@ -57,6 +59,11 @@ export class WebmExportDialogController implements PopupContentController {
         );
         this.widthInput = this.createNumberInput("webm-output-width", state.width, 320, 8192);
         this.heightInput = this.createNumberInput("webm-output-height", state.height, 180, 8192);
+        this.qualityScaleSelect = this.createSelect(
+            "webm-output-quality-scale",
+            OUTPUT_QUALITY_SCALE_OPTIONS,
+            String(state.qualityScale),
+        );
         this.fpsSelect = this.createSelect("webm-output-fps", OUTPUT_FPS_OPTIONS, String(state.fps));
         this.includeAudioInput = this.createCheckbox("webm-output-include-audio", state.includeAudio);
         this.usePlaybackRangeInput = this.createCheckbox("webm-output-use-playback-range", state.usePlaybackRange);
@@ -66,6 +73,7 @@ export class WebmExportDialogController implements PopupContentController {
         form.appendChild(createPopupFormField(t("dialog.webmExport.aspect"), this.aspectSelect));
         form.appendChild(createPopupFormField(t("dialog.webmExport.longSide"), this.sizePresetSelect));
         form.appendChild(this.createSizeField());
+        form.appendChild(createPopupFormField(t("dialog.webmExport.qualityScale"), this.qualityScaleSelect));
         form.appendChild(createPopupFormField(t("dialog.webmExport.fps"), this.fpsSelect));
         form.appendChild(createPopupFormField(t("dialog.webmExport.includeAudio"), this.includeAudioInput));
         form.appendChild(createPopupFormField(t("dialog.webmExport.usePlaybackRange"), this.usePlaybackRangeInput));
@@ -127,6 +135,9 @@ export class WebmExportDialogController implements PopupContentController {
 
         this.fpsSelect?.addEventListener("change", () => {
             this.output.setFps(this.parseNumberInput(this.fpsSelect, 30));
+        });
+        this.qualityScaleSelect?.addEventListener("change", () => {
+            this.output.setQualityScale(this.parseDecimalInput(this.qualityScaleSelect, 1));
         });
         this.includeAudioInput?.addEventListener("change", () => {
             this.output.setIncludeAudio(this.includeAudioInput?.checked ?? false);
@@ -230,6 +241,7 @@ export class WebmExportDialogController implements PopupContentController {
         if (this.sizePresetSelect) this.output.setSizePreset(this.sizePresetSelect.value);
         if (this.widthInput) this.output.setWidth(this.parseNumberInput(this.widthInput, 1920));
         if (this.heightInput) this.output.setHeight(this.parseNumberInput(this.heightInput, 1080));
+        if (this.qualityScaleSelect) this.output.setQualityScale(this.parseDecimalInput(this.qualityScaleSelect, 1));
         if (this.fpsSelect) this.output.setFps(this.parseNumberInput(this.fpsSelect, 30));
         if (this.includeAudioInput) this.output.setIncludeAudio(this.includeAudioInput.checked);
         if (this.usePlaybackRangeInput) this.output.setUsePlaybackRange(this.usePlaybackRangeInput.checked);
@@ -264,6 +276,11 @@ export class WebmExportDialogController implements PopupContentController {
 
     private parseNumberInput(input: HTMLInputElement | HTMLSelectElement | null, fallback: number): number {
         const value = Number.parseInt(input?.value ?? String(fallback), 10);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    private parseDecimalInput(input: HTMLInputElement | HTMLSelectElement | null, fallback: number): number {
+        const value = Number.parseFloat(input?.value ?? String(fallback));
         return Number.isFinite(value) ? value : fallback;
     }
 

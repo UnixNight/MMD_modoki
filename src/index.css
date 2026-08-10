@@ -4752,6 +4752,27 @@ body.bottom-panel-resizing #bottom-panel-resizer::before {
   min-width: 0;
 }
 
+.ui-busy-cancel {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ui-busy-cancel:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+.ui-busy-cancel:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 #app.ui-export-lock #toolbar,
 #app.ui-export-lock #timeline-panel,
 #app.ui-export-lock #timeline-resizer,

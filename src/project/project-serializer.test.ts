@@ -69,6 +69,7 @@ function createHost() {
         occlusionShadowEdgeSoftness: 0.01,
         isGroundVisible: (): boolean => true,
         isSkydomeVisible: (): boolean => true,
+        isBackgroundBlack: (): boolean => false,
         getSkydomeBackgroundStyle: () => ({
             mode: "solid" as const,
             topColor: { r: 200 / 255, g: 200 / 255, b: 200 / 255 },
@@ -303,6 +304,15 @@ describe("exportProjectState", () => {
             bottomColor: { r: 0.4, g: 0.5, b: 0.6 },
             brightness: 1.35,
         });
+    });
+
+    it("writes the black background viewport setting", () => {
+        const project = exportProjectState({
+            ...createHost(),
+            isBackgroundBlack: (): boolean => true,
+        });
+
+        expect(project.viewport.backgroundBlack).toBe(true);
     });
 
     it("writes physics floor collision setting", () => {

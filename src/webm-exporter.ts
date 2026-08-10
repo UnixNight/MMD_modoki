@@ -25,6 +25,14 @@ import type {
 export interface WebmExportCallbacks {
     onStatus?: (message: string, phase: WebmExportPhase) => void;
     onProgress?: (encoded: number, total: number, frame: number, captured: number) => void;
+    isCancellationRequested?: () => boolean;
+}
+
+export class WebmExportCanceledError extends Error {
+    constructor() {
+        super("WebM export canceled by user");
+        this.name = "WebmExportCanceledError";
+    }
 }
 
 export interface WebmExportResult {
@@ -62,10 +70,16 @@ type ExportRuntimeInternals = {
     camera: Camera;
     scene: Scene;
     mmdRuntime: {
+        autoPhysicsInitialization?: boolean;
         playAnimation: () => Promise<void>;
         pauseAnimation: () => void;
     };
 };
+
+// babylon-mmd's integrated PhysicsClock substitutes a 1/60 s step when the
+// engine delta is exactly zero. Keep the initial snapshot render effectively
+// stationary while still allowing Babylon to render the scene.
+const SNAPSHOT_INITIAL_RENDER_DELTA_MS = 0.001;
 
 type WebGpuCaptureEngineInternals = {
     _getCurrentRenderPassWrapper?: () => unknown;
@@ -511,7 +525,7 @@ const selectWebmVideoEncoding = async (
     preferredCodec: "auto" | WebmVideoCodec,
 ): Promise<SelectedWebmVideoEncoding | null> => {
     const codecOrder: WebmVideoCodec[] = preferredCodec === "auto"
-        ? ["vp8", "vp9"]
+        ? ["vp9", "vp8"]
         : [preferredCodec];
     for (const codec of codecOrder) {
         if (await canEncodeVideo(codec, {
@@ -544,18 +558,18 @@ const estimateVideoBitrate = (width: number, height: number, fps: number): numbe
     const isHighFps = fps > 30;
 
     if (megapixels <= 2.2) {
-        return isHighFps ? 12_000_000 : 8_000_000;
-    }
-    if (megapixels <= 3.8) {
         return isHighFps ? 24_000_000 : 16_000_000;
     }
+    if (megapixels <= 3.8) {
+        return isHighFps ? 45_000_000 : 30_000_000;
+    }
     if (megapixels <= 8.6) {
-        return isHighFps ? 53_000_000 : 35_000_000;
+        return isHighFps ? 80_000_000 : 60_000_000;
     }
 
-    const bitratePerMegapixel = isHighFps ? 6_500_000 : 4_200_000;
+    const bitratePerMegapixel = isHighFps ? 10_000_000 : 7_500_000;
     const fallbackBitrate = megapixels * bitratePerMegapixel;
-    return Math.max(8_000_000, Math.min(80_000_000, Math.round(fallbackBitrate)));
+    return Math.max(16_000_000, Math.min(120_000_000, Math.round(fallbackBitrate)));
 };
 
 const estimateAudioBitrate = (channelCount: number): number => {
@@ -694,6 +708,12 @@ export async function runWebmExportJob(
     callbacks: WebmExportCallbacks = {},
     enginePreference: RenderEnginePreference = "auto",
 ): Promise<WebmExportResult> {
+    const throwIfCancellationRequested = (): void => {
+        if (callbacks.isCancellationRequested?.()) {
+            throw new WebmExportCanceledError();
+        }
+    };
+    throwIfCancellationRequested();
     if (!window.isSecureContext) {
         throw new Error("WebCodecs requires a secure context");
     }
@@ -727,6 +747,7 @@ export async function runWebmExportJob(
     const mmdManager = await MmdManager.create(canvas, enginePreference);
 
     try {
+        throwIfCancellationRequested();
         const exportRuntimeInternals = mmdManager as unknown as ExportRuntimeInternals & {
             engine: AbstractEngine & {
                 setHardwareScalingLevel?: (level: number) => void;
@@ -737,6 +758,7 @@ export async function runWebmExportJob(
 
         updateStatus(callbacks, "Loading project into export renderer...", "loading-project");
         const importResult = await mmdManager.importProjectState(request.project, { forExport: true });
+        throwIfCancellationRequested();
         const expectedModelCount = request.project.scene.models.length;
         if (importResult.loadedModels < expectedModelCount) {
             const warningText = importResult.warnings.slice(0, 3).join(" | ");
@@ -758,6 +780,12 @@ export async function runWebmExportJob(
         const restoredInitialPhysics = mmdManager.applyWebmInitialPhysicsState(request.initialPhysicsState);
         if (request.initialPhysicsState && !restoredInitialPhysics) {
             console.warn("[WebM] Initial physics snapshot was provided but could not be restored.");
+        }
+        if (restoredInitialPhysics) {
+            // playAnimation() at frame 0 queues automatic physics initialization.
+            // That queue runs on the next render (the second encoded frame) and
+            // overwrites the rigid-body snapshot we just restored.
+            exportRuntimeInternals.mmdRuntime.autoPhysicsInitialization = false;
         }
         if (captureMode !== "readpixels") {
             updateStatus(callbacks, "Preparing post effects for WebM capture...", "initializing");
@@ -977,12 +1005,20 @@ export async function runWebmExportJob(
             try {
                 let playbackStarted = false;
                 for (let outputFrameIndex = 0; outputFrameIndex < totalFrames; outputFrameIndex += 1) {
+                    if (callbacks.isCancellationRequested?.()) {
+                        fatalError = new WebmExportCanceledError();
+                        break;
+                    }
                     if (fatalError) break;
 
                     if (queue.length >= maxQueueLength) {
                         const queueWaitStartedAt = performance.now();
                         queueWaitCount += 1;
                         while (queue.length >= maxQueueLength && !fatalError) {
+                            if (callbacks.isCancellationRequested?.()) {
+                                fatalError = new WebmExportCanceledError();
+                                break;
+                            }
                             await sleepMs(1);
                         }
                         queueWaitMsTotal += performance.now() - queueWaitStartedAt;
@@ -997,9 +1033,13 @@ export async function runWebmExportJob(
                     const renderStartedAt = performance.now();
                     if (!playbackStarted) {
                         if (captureMode === "readpixels") {
-                            mmdManager.renderOnce(0);
+                            mmdManager.renderOnce(
+                                restoredInitialPhysics ? SNAPSHOT_INITIAL_RENDER_DELTA_MS : 0,
+                            );
                         } else {
-                            mmdManager.renderOnceForCapture(0);
+                            mmdManager.renderOnceForCapture(
+                                restoredInitialPhysics ? SNAPSHOT_INITIAL_RENDER_DELTA_MS : 0,
+                            );
                         }
                         playbackStarted = true;
                     } else {
@@ -1029,6 +1069,12 @@ export async function runWebmExportJob(
                         fatalError = error instanceof Error
                             ? error
                             : new Error(`Failed to capture frame ${frame}: ${String(error)}`);
+                    }
+                    if (callbacks.isCancellationRequested?.()) {
+                        capturedItem?.videoSample.close();
+                        capturedItem?.release?.();
+                        capturedItem = null;
+                        fatalError = new WebmExportCanceledError();
                     }
                     if (capturedItem) {
                         queue.push(capturedItem);

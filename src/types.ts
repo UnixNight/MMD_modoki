@@ -54,7 +54,10 @@ export interface ElectronAPI {
     ) => Promise<WebmExportLaunchResult | null>;
     takeWebmExportJob: (jobId: string) => Promise<WebmExportRequest | null>;
     finishWebmExportJob: (jobId: string) => Promise<boolean>;
+    cancelWebmExports: () => Promise<number>;
+    isWebmExportCancellationRequested: (jobId: string) => Promise<boolean>;
     reportWebmExportProgress: (progress: WebmExportProgress) => void;
+    onWebmExportCancel: (callback: () => void) => () => void;
     onWebmExportState: (callback: (state: WebmExportState) => void) => () => void;
     onWebmExportProgress: (callback: (progress: WebmExportProgress) => void) => () => void;
     logDebug: (scope: AppLogScope, message: string, data?: AppLogData) => void;
@@ -424,6 +427,8 @@ export interface ProjectLightingState {
 export interface ProjectViewportState {
     groundVisible: boolean;
     skydomeVisible: boolean;
+    /** Omitted by older v1 project files; those retain the default background style. */
+    backgroundBlack?: boolean;
     skydomeBackground?: import("./shared/skydome-background-style").SkydomeBackgroundStyle;
     antialiasEnabled: boolean;
     mirroringFloorEnabled?: boolean;
@@ -816,6 +821,7 @@ export type WebmExportPhase =
     | "finalizing"
     | "finishing-job"
     | "completed"
+    | "canceled"
     | "failed";
 
 export interface WebmExportDiagnostics {

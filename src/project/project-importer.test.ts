@@ -88,6 +88,7 @@ function createHost() {
         setPbrMaterialShaderPreset: vi.fn(),
         setGroundVisible: vi.fn(),
         setSkydomeVisible: vi.fn(),
+        setBackgroundBlack: vi.fn(),
         setSkydomeBackgroundStyle: vi.fn(),
         clearBackgroundMedia: vi.fn(),
         setBackgroundVideoFromPath: vi.fn(),
@@ -638,6 +639,23 @@ describe("importProjectState", () => {
         const legacyHost = createHost();
         await importProjectState(legacyHost, createProject());
         expect(legacyHost.setSkydomeBackgroundStyle).toHaveBeenCalledWith(DEFAULT_SKYDOME_BACKGROUND_STYLE);
+    });
+
+    it("restores the black background setting and defaults legacy projects to the normal background", async () => {
+        const blackHost = createHost();
+        const blackProject = createProject({
+            viewport: {
+                ...createProject().viewport,
+                backgroundBlack: true,
+            },
+        });
+
+        await importProjectState(blackHost, blackProject);
+        expect(blackHost.setBackgroundBlack).toHaveBeenCalledWith(true);
+
+        const legacyHost = createHost();
+        await importProjectState(legacyHost, createProject());
+        expect(legacyHost.setBackgroundBlack).toHaveBeenCalledWith(false);
     });
 
     it("restores embedded camera animation through the runtime camera path", async () => {

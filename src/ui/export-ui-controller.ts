@@ -8,6 +8,7 @@ import { t } from "../i18n";
 import { logError, logInfo } from "../app-logger";
 import type { MmdManager } from "../mmd-manager";
 import { PngEncoderWebWorkerPool } from "../output/png-encoder-web-worker-pool";
+import { scaleExportDimensions } from "../output/export-dimensions";
 import type { EditorAction } from "../actions/types";
 import type {
     MmdModokiProjectFileV1,
@@ -89,6 +90,13 @@ export const OUTPUT_FPS_OPTIONS: ReadonlyArray<{ value: string; label: string }>
     { value: "60", label: "60" },
 ];
 
+export const OUTPUT_QUALITY_SCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: "1", label: "1x" },
+    { value: "1.5", label: "1.5x" },
+    { value: "2", label: "2x" },
+    { value: "4", label: "4x" },
+];
+
 const FIXED_WEBM_CAPTURE_MODE: WebmCaptureMode = "rgba-surface";
 
 type ToastType = "success" | "error" | "info";
@@ -97,6 +105,7 @@ type ExportUiElements = {
     appRoot: HTMLElement;
     busyOverlay: HTMLElement | null;
     busyText: HTMLElement | null;
+    cancelWebmExportButton: HTMLButtonElement | null;
     viewportOutputAspectSelect: HTMLSelectElement | null;
     outputStartFrameInput: HTMLInputElement | null;
     outputEndFrameInput: HTMLInputElement | null;
@@ -121,6 +130,7 @@ function resolveExportUiElements(): ExportUiElements {
         appRoot: document.getElementById("app") as HTMLElement,
         busyOverlay: document.getElementById("ui-busy-overlay"),
         busyText: document.getElementById("ui-busy-text"),
+        cancelWebmExportButton: document.getElementById("ui-cancel-webm-export") as HTMLButtonElement | null,
         viewportOutputAspectSelect: document.getElementById("viewport-output-aspect") as HTMLSelectElement | null,
         outputStartFrameInput: document.getElementById("output-start-frame") as HTMLInputElement | null,
         outputEndFrameInput: document.getElementById("output-end-frame") as HTMLInputElement | null,
@@ -140,6 +150,7 @@ function formatWebmExportPhaseLabel(phase: WebmExportProgress["phase"]): string 
         case "finalizing": return t("webm.phase.finalizing");
         case "finishing-job": return t("webm.phase.finishingJob");
         case "completed": return t("webm.phase.completed");
+        case "canceled": return t("webm.phase.canceled");
         case "failed": return t("webm.phase.failed");
         default: return phase;
     }
@@ -186,6 +197,7 @@ export class ExportUiController {
     private isWebmExportActive = false;
     private webmExportActiveCount = 0;
     private latestWebmExportProgress: WebmExportProgress | null = null;
+    private webmCancellationRequested = false;
     private backgroundExportMonitorIntervalId: number | null = null;
     private outputAspectRatio = 16 / 9;
     private isSyncingOutputSettings = false;
@@ -205,7 +217,7 @@ export class ExportUiController {
         qualityScale: 1,
         fps: 30,
         includeAudio: false,
-        preferredVideoCodec: "vp8",
+        preferredVideoCodec: "auto",
         captureMode: "rgba-surface",
         usePlaybackRange: false,
         startFrame: 0,
@@ -227,6 +239,9 @@ export class ExportUiController {
         this.setupOutputControls();
         this.setupPngSequenceExportStateBridge();
         this.setupWebmExportStateBridge();
+        this.elements.cancelWebmExportButton?.addEventListener("click", () => {
+            void this.cancelWebmExports();
+        });
         this.startBackgroundExportMonitor();
     }
 
@@ -581,6 +596,11 @@ export class ExportUiController {
         }
 
         const outputSettings = this.getOutputSettings();
+        const captureDimensions = scaleExportDimensions(
+            outputSettings.width,
+            outputSettings.height,
+            outputSettings.qualityScale,
+        );
         const totalOutputFrames = Math.max(1, Math.round((totalTimelineFrames / 30) * outputSettings.fps));
         logInfo("webm", "export requested", {
             startFrame,
@@ -588,13 +608,13 @@ export class ExportUiController {
             totalTimelineFrames,
             totalOutputFrames,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             qualityScale: outputSettings.qualityScale,
         });
         const defaultFileName = this.buildWebmFileName(
-            outputSettings.width,
-            outputSettings.height,
+            captureDimensions.width,
+            captureDimensions.height,
             startFrame,
             endFrame,
         );
@@ -615,20 +635,29 @@ export class ExportUiController {
             this.showToast(t("toast.audioMissingForWebm"), "info");
         }
         project.assets.audioPath = null;
-        const initialPhysicsState = this.mmdManager.captureWebmInitialPhysicsState();
+        const capturedPhysicsState = this.mmdManager.captureWebmInitialPhysicsState();
+        // Rigid-body transforms are only meaningful for the animation frame at
+        // which they were captured. Do not inject a mid-timeline viewport state
+        // into an export that starts at another frame (commonly frame 0).
+        const initialPhysicsState = capturedPhysicsState?.capturedFrame === startFrame
+            ? capturedPhysicsState
+            : null;
         logInfo("webm", "export launching", {
             outputFilePath,
             startFrame,
             endFrame,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             includeAudio,
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,
             captureMode,
             initialPhysicsModels: initialPhysicsState?.models.length ?? 0,
             initialPhysicsFrame: initialPhysicsState?.capturedFrame ?? null,
+            skippedInitialPhysicsFrame: capturedPhysicsState && !initialPhysicsState
+                ? capturedPhysicsState.capturedFrame
+                : null,
         });
 
         this.setStatus(t("busy.webmExportLaunching"), true);
@@ -638,8 +667,8 @@ export class ExportUiController {
             startFrame,
             endFrame,
             fps: outputSettings.fps,
-            outputWidth: outputSettings.width,
-            outputHeight: outputSettings.height,
+            outputWidth: captureDimensions.width,
+            outputHeight: captureDimensions.height,
             includeAudio,
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,
@@ -1044,8 +1073,27 @@ export class ExportUiController {
         this.webmExportActiveCount = Math.max(0, Math.floor(state?.activeCount ?? 0));
         if (!this.isWebmExportActive) {
             this.latestWebmExportProgress = null;
+            this.webmCancellationRequested = false;
         }
         this.refreshBackgroundExportLock();
+    }
+
+    private async cancelWebmExports(): Promise<void> {
+        if (!this.isWebmExportActive || this.webmCancellationRequested) return;
+        this.webmCancellationRequested = true;
+        this.refreshBackgroundExportLock();
+        try {
+            const canceledJobCount = await window.electronAPI.cancelWebmExports();
+            if (canceledJobCount === 0) {
+                this.webmCancellationRequested = false;
+                this.refreshBackgroundExportLock();
+            }
+        } catch (error: unknown) {
+            this.webmCancellationRequested = false;
+            logError("webm", "failed to request WebM export cancellation", { error: String(error) });
+            this.showToast(t("toast.webmCancelFailed"), "error");
+            this.refreshBackgroundExportLock();
+        }
     }
 
     private applyWebmExportProgress(progress: WebmExportProgress): void {
@@ -1059,6 +1107,12 @@ export class ExportUiController {
         this.elements.appRoot.classList.toggle("ui-export-lock", active);
         this.elements.busyOverlay?.classList.toggle("hidden", !active);
         this.elements.busyOverlay?.setAttribute("aria-hidden", active ? "false" : "true");
+        const cancelButton = this.elements.cancelWebmExportButton;
+        cancelButton?.classList.toggle("hidden", !this.isWebmExportActive);
+        if (cancelButton) {
+            cancelButton.disabled = this.webmCancellationRequested;
+            cancelButton.textContent = t(this.webmCancellationRequested ? "button.cancelingRender" : "button.cancelRender");
+        }
 
         if (!active) {
             if (this.elements.busyText) {
