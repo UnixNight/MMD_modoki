@@ -53,7 +53,13 @@ import {
 import { buildBoneTransformCommand } from "./actions/bone-transform-command-builder";
 import { buildCameraTransformCommand } from "./actions/camera-transform-command-builder";
 import type { BoneTransformCommandSnapshot, BuiltCommand, CameraTransformCommandSnapshot, CommandTrackRef } from "./actions/command-types";
-import type { BoneKeyframePayload, CameraKeyframePayload, MovableBoneKeyframePayload, TimelineKeyframePayload } from "./editor/timeline-edit-service";
+import type {
+    BoneKeyframePayload,
+    CameraExternalParentKeyframePayload,
+    CameraKeyframePayload,
+    MovableBoneKeyframePayload,
+    TimelineKeyframePayload,
+} from "./editor/timeline-edit-service";
 import type { ModelExternalParentKeyframePayload } from "./shared/model-external-parent";
 import {
     buildMirrorPasteItems,
@@ -586,6 +592,7 @@ export class UIController {
         });
         this.cameraPanelController = new CameraPanelController({
             mmdManager: this.mmdManager,
+            showToast: (message, type) => this.showToast(message, type),
             onCameraEdited: () => {
                 this.actionDispatcher.dispatch({ type: "edit.cameraTransformChanged", source: "panel" });
             },
@@ -2317,12 +2324,13 @@ export class UIController {
             this.cameraPanelController?.setCameraViewPreset(action.view);
         });
         this.actionDispatcher.register("camera.setExternalParent", () => {
-            this.cameraPanelController?.setExternalParentFromPanel();
+            if (!this.cameraPanelController?.setExternalParentFromPanel(false)) return;
+            const externalParent = this.mmdManager.getCameraExternalParentPayload();
             this.tryRegisterEditorCameraKeyframe({
                 name: "Camera",
                 category: "camera",
                 frames: new Uint32Array(0),
-            }, this.captureCurrentBonePoseSnapshot("Camera"));
+            }, this.captureCurrentBonePoseSnapshot("Camera"), externalParent);
         });
         this.actionDispatcher.register("camera.setMirroringFloorEnabled", (action) => {
             this.mmdManager.mirroringFloorEnabled = action.enabled;
@@ -3382,6 +3390,7 @@ export class UIController {
         this.syncBottomBoneSelectionFromTimeline(this.timeline.getSelectedTrack());
         this.updateInfoActionButtons();
         this.bottomPanelLayoutController?.applyMode("model");
+        this.cameraPanelController?.refresh();
         this.modelExternalParentController?.refresh();
         this.refreshViewportBottomBar();
     }
@@ -6278,7 +6287,7 @@ export class UIController {
         this.mmdManager.applyCameraTrackPose(
             snapshot.target,
             snapshot.rotation,
-            Math.max(0.1, snapshot.distance),
+            Math.max(0, snapshot.distance),
             Math.max(10, Math.min(120, snapshot.fov)),
         );
         this.rememberEditedBonePoseSnapshot("Camera", this.captureCurrentBonePoseSnapshot("Camera"));
@@ -8507,6 +8516,7 @@ export class UIController {
     private tryRegisterEditorCameraKeyframe(
         track: KeyframeTrack,
         poseSnapshot: SelectedBonePoseSnapshot | null,
+        externalParentOverride?: CameraExternalParentKeyframePayload,
     ): boolean {
         if (track.category !== "camera") {
             return false;
@@ -8515,7 +8525,11 @@ export class UIController {
         const frame = Math.max(0, Math.floor(this.mmdManager.currentFrame));
         const interpolationSnapshot = this.captureInterpolationCurveSnapshot(track, frame);
         const before = this.mmdManager.readTimelineKeyframePayload(track, frame);
-        const after = this.createCameraKeyframePayload(poseSnapshot, interpolationSnapshot);
+        const after = this.createCameraKeyframePayload(
+            poseSnapshot,
+            interpolationSnapshot,
+            externalParentOverride,
+        );
         const nowMs = Date.now();
         const command: BuiltCommand = {
             id: `keyframe.camera:${createCommandTrackKey(track)}:${frame}:${nowMs}`,
@@ -8542,6 +8556,7 @@ export class UIController {
         this.clearSectionKeyframeDirty("interpolation", this.getInterpolationKeyframeContextKey(track));
         if (this.bottomPanel.getSelectedBone() === "Camera") {
             this.clearSectionKeyframeDirty("bone", this.getBoneKeyframeContextKey("Camera"));
+            this.bottomPanel.syncSelectedBoneSlidersFromRuntime(true);
         }
         this.refreshCameraUiFromRuntime(true);
         this.refreshSelectedTrackRotationOverlay();
@@ -8559,11 +8574,17 @@ export class UIController {
     private createCameraKeyframePayload(
         poseSnapshot: SelectedBonePoseSnapshot | null,
         curves: ReadonlyMap<string, InterpolationCurve>,
+        externalParentOverride?: CameraExternalParentKeyframePayload,
     ): CameraKeyframePayload {
-        const target = poseSnapshot?.target ?? this.mmdManager.getCameraTarget();
-        const rotationDeg = poseSnapshot?.rotation ?? this.mmdManager.getCameraRotation();
-        const distance = Math.max(0.0001, poseSnapshot?.distance ?? this.mmdManager.getCameraDistance());
-        const fov = poseSnapshot?.fov ?? this.mmdManager.getCameraFov();
+        const runtimePose = this.mmdManager.getCameraKeyframePose();
+        const target = poseSnapshot?.target ?? runtimePose.target;
+        const rotationDeg = poseSnapshot?.rotation ?? runtimePose.rotation;
+        const externalParent = externalParentOverride
+            ?? this.mmdManager.getCameraExternalParentPayload();
+        const distance = externalParent.modelPath
+            ? 0
+            : Math.max(0.0001, poseSnapshot?.distance ?? runtimePose.distance);
+        const fov = poseSnapshot?.fov ?? runtimePose.fov;
         const degToRad = Math.PI / 180;
         return {
             kind: "camera",
@@ -8579,7 +8600,7 @@ export class UIController {
             distanceInterpolations: this.curveToBlock(this.getCurveFromSnapshot(curves, "cam-dist")),
             fovs: [fov],
             fovInterpolations: this.curveToBlock(this.getCurveFromSnapshot(curves, "cam-fov")),
-            externalParent: this.mmdManager.getCameraExternalParentPayload(),
+            externalParent,
         };
     }
 
@@ -8940,11 +8961,14 @@ export class UIController {
         const frameEdit = this.upsertFrameNumber(track.frameNumbers, frame);
         track.frameNumbers = frameEdit.frames;
 
-        const cameraPosition = poseSnapshot?.position ?? this.mmdManager.getCameraPosition();
-        const cameraRotationDeg = poseSnapshot?.rotation ?? this.mmdManager.getCameraRotation();
-        const cameraDistance = Math.max(0.0001, poseSnapshot?.distance ?? this.mmdManager.getCameraDistance());
-        const cameraFovDeg = poseSnapshot?.fov ?? this.mmdManager.getCameraFov();
-        const cameraTarget = poseSnapshot?.target ?? this.mmdManager.getCameraTarget();
+        const runtimePose = this.mmdManager.getCameraKeyframePose();
+        const cameraPosition = poseSnapshot?.position ?? runtimePose.position;
+        const cameraRotationDeg = poseSnapshot?.rotation ?? runtimePose.rotation;
+        const cameraDistance = this.mmdManager.getCameraExternalParent()
+            ? 0
+            : Math.max(0.0001, poseSnapshot?.distance ?? runtimePose.distance);
+        const cameraFovDeg = poseSnapshot?.fov ?? runtimePose.fov;
+        const cameraTarget = poseSnapshot?.target ?? runtimePose.target;
         const degToRad = Math.PI / 180;
         this.debugKeyframeFlow("persist camera keyframe", {
             frame,
