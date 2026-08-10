@@ -6295,6 +6295,11 @@ ${beforeFogAppendBlock}
             this.syncFrameGraphRenderTargetState();
             const deltaMs = Math.max(0, Math.min(100, nowMs - this.lastRenderTimestampMs));
             this.lastRenderTimestampMs = nowMs;
+            // Keep Babylon's animation and physics clock aligned with the capped
+            // playback delta. Native file dialogs and debugger pauses can otherwise
+            // deliver a multi-second delta, making a loaded VMD visibly jump ahead.
+            const engineWithDelta = this.engine as typeof this.engine & { _deltaTime?: number };
+            engineWithDelta._deltaTime = deltaMs;
 
             let sectionStartMs = this.framePerformanceLogEnabled ? performance.now() : 0;
             const advancedManualPlayback = this.advanceManualPlaybackWithoutAudio(deltaMs);
