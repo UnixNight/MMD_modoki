@@ -326,6 +326,7 @@ describe("exportProjectState", () => {
                 position: { x: 1, y: 2, z: 3 },
                 target: { x: 4, y: 5, z: 6 },
                 rotation: { x: 7, y: 8, z: 9 },
+                perspectiveEnabled: false,
                 fov: 30,
                 distance: 45,
                 externalParent: {
@@ -342,6 +343,7 @@ describe("exportProjectState", () => {
             boneName: "頭",
         });
         expect(project.camera.target).toEqual({ x: 4, y: 5, z: 6 });
+        expect(project.camera.perspectiveEnabled).toBe(false);
     });
 
     it("writes model external parent by model path and bone names", () => {

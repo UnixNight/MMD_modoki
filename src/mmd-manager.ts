@@ -12423,6 +12423,7 @@ ${beforeFogAppendBlock}
                 y: this.normalizeCameraAngleDeg((this.mmdCamera.rotation.y * 180) / Math.PI),
                 z: this.normalizeCameraAngleDeg((this.mmdCamera.rotation.z * 180) / Math.PI),
             },
+            perspectiveEnabled: this.getPerspectiveEnabled(),
             fov: (this.mmdCamera.fov * 180) / Math.PI,
             distance: Math.abs(this.mmdCamera.distance),
             externalParent: (() => {
@@ -12565,8 +12566,10 @@ ${beforeFogAppendBlock}
     private updateOrthographicCameraBounds(): void {
         if (!this.camera || this.camera.mode !== Camera.ORTHOGRAPHIC_CAMERA) return;
 
-        const width = Math.max(1, this.renderingCanvas.clientWidth || this.engine.getRenderWidth(true) || 1);
-        const height = Math.max(1, this.renderingCanvas.clientHeight || this.engine.getRenderHeight(true) || 1);
+        const width = this.exportRenderSurface?.width
+            ?? Math.max(1, this.renderingCanvas.clientWidth || this.engine.getRenderWidth(true) || 1);
+        const height = this.exportRenderSurface?.height
+            ?? Math.max(1, this.renderingCanvas.clientHeight || this.engine.getRenderHeight(true) || 1);
         const aspect = width / height;
         const distance = Math.max(0.1, this.getCameraDistance());
         const verticalSize = Math.max(0.1, 2 * distance * Math.tan(Math.max(0.01, this.camera.fov) * 0.5));
@@ -13296,6 +13299,7 @@ ${beforeFogAppendBlock}
             this.initializePostEffectBackend();
         }
         this.syncExportRenderSurfaceTarget();
+        this.updateOrthographicCameraBounds();
         const diagnostics = this.exportRenderSurface.getDiagnostics();
         logInfo("performance", "export render surface prepared", {
             ...diagnostics,

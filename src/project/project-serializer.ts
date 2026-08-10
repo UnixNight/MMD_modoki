@@ -209,6 +209,7 @@ type ProjectExportHost = {
         position: { x: number; y: number; z: number };
         target: { x: number; y: number; z: number };
         rotation: { x: number; y: number; z: number };
+        perspectiveEnabled?: boolean;
         fov: number;
         distance: number;
         externalParent?: {
@@ -336,6 +337,7 @@ export function exportProjectState(host: ProjectExportHost): MmdModokiProjectFil
                 y: host.cameraRotationEulerDeg.y,
                 z: host.cameraRotationEulerDeg.z,
             },
+            perspectiveEnabled: true,
             fov: host.getCameraFov(),
             distance: host.getCameraDistance(),
             externalParent: (() => {

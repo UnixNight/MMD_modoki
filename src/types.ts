@@ -362,6 +362,8 @@ export interface ProjectCameraState {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
     rotation: { x: number; y: number; z: number };
+    /** Omitted by older v1 project files; those retain the perspective default. */
+    perspectiveEnabled?: boolean;
     fov: number;
     distance: number;
     externalParent?: {

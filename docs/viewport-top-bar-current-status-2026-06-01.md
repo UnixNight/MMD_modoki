@@ -103,7 +103,6 @@ Esc、外側クリック、項目選択で閉じる。閉じたあとは ViewCub
 
 ## 今回やらないこと
 
-- パース ON/OFF の project 保存
 - パース ON/OFF の VMD camera keyframe 化
 - ViewCube の 3D cube 化
 - ViewCube の辺 / 角クリック
@@ -120,6 +119,7 @@ Esc、外側クリック、項目選択で閉じる。閉じたあとは ViewCub
   - 17 files / 100 tests passed
 - `npm.cmd run smoke:launch`
   - WebGPU / Bullet MPR 初期化まで到達
+- パース ON/OFF は project state に保存し、WebM export の isolated renderer にも復元する
 
 ViewCube の見た目調整後は `npm.cmd run lint` のみ再確認した。
 
@@ -128,5 +128,5 @@ ViewCube の見た目調整後は `npm.cmd run lint` のみ再確認した。
 - 上バー操作の実機感度調整
 - ViewCube の配置と裏面の置き場所の再検討
 - ViewCube を本格的な 3D cube UI にするかどうかの検討
-- パース ON/OFF を project state / camera keyframe に含めるかの検討
+- パース ON/OFF の VMD camera keyframe 化の検討
 - 上バーと下バーを含めた `viewport chrome` 全体の controller 境界整理

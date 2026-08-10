@@ -23,6 +23,7 @@ function createProject(overrides: Partial<MmdModokiProjectFileV1> = {}): MmdModo
             position: { x: 0, y: 10, z: -30 },
             target: { x: 0, y: 10, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
+            perspectiveEnabled: true,
             fov: 30,
             distance: 30,
         },
@@ -76,6 +77,7 @@ function createHost() {
         loadMP3: vi.fn(),
         applyCameraAnimation: vi.fn(),
         applyCameraTrackPose: vi.fn(),
+        setPerspectiveEnabled: vi.fn(),
         setActiveModelByIndex: vi.fn(),
         setActiveModelVisibility: vi.fn(),
         setModelCastsShadowByIndex: vi.fn(),
@@ -171,6 +173,30 @@ function createHost() {
 }
 
 describe("importProjectState", () => {
+    it("restores the saved orthographic camera mode", async () => {
+        const host = createHost();
+        const project = createProject({
+            camera: {
+                ...createProject().camera,
+                perspectiveEnabled: false,
+            },
+        });
+
+        await importProjectState(host, project);
+
+        expect(host.setPerspectiveEnabled).toHaveBeenCalledWith(false);
+    });
+
+    it("leaves the default perspective mode for older project files", async () => {
+        const host = createHost();
+        const project = createProject();
+        delete project.camera.perspectiveEnabled;
+
+        await importProjectState(host, project);
+
+        expect(host.setPerspectiveEnabled).not.toHaveBeenCalled();
+    });
+
     it("restores model external parents after all models are loaded", async () => {
         const host = createHost();
         host.loadPMX.mockImplementation(async (modelPath: string) => {
