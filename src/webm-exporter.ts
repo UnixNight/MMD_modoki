@@ -25,6 +25,14 @@ import type {
 export interface WebmExportCallbacks {
     onStatus?: (message: string, phase: WebmExportPhase) => void;
     onProgress?: (encoded: number, total: number, frame: number, captured: number) => void;
+    isCancellationRequested?: () => boolean;
+}
+
+export class WebmExportCanceledError extends Error {
+    constructor() {
+        super("WebM export canceled by user");
+        this.name = "WebmExportCanceledError";
+    }
 }
 
 export interface WebmExportResult {
@@ -694,6 +702,12 @@ export async function runWebmExportJob(
     callbacks: WebmExportCallbacks = {},
     enginePreference: RenderEnginePreference = "auto",
 ): Promise<WebmExportResult> {
+    const throwIfCancellationRequested = (): void => {
+        if (callbacks.isCancellationRequested?.()) {
+            throw new WebmExportCanceledError();
+        }
+    };
+    throwIfCancellationRequested();
     if (!window.isSecureContext) {
         throw new Error("WebCodecs requires a secure context");
     }
@@ -727,6 +741,7 @@ export async function runWebmExportJob(
     const mmdManager = await MmdManager.create(canvas, enginePreference);
 
     try {
+        throwIfCancellationRequested();
         const exportRuntimeInternals = mmdManager as unknown as ExportRuntimeInternals & {
             engine: AbstractEngine & {
                 setHardwareScalingLevel?: (level: number) => void;
@@ -737,6 +752,7 @@ export async function runWebmExportJob(
 
         updateStatus(callbacks, "Loading project into export renderer...", "loading-project");
         const importResult = await mmdManager.importProjectState(request.project, { forExport: true });
+        throwIfCancellationRequested();
         const expectedModelCount = request.project.scene.models.length;
         if (importResult.loadedModels < expectedModelCount) {
             const warningText = importResult.warnings.slice(0, 3).join(" | ");
@@ -977,12 +993,20 @@ export async function runWebmExportJob(
             try {
                 let playbackStarted = false;
                 for (let outputFrameIndex = 0; outputFrameIndex < totalFrames; outputFrameIndex += 1) {
+                    if (callbacks.isCancellationRequested?.()) {
+                        fatalError = new WebmExportCanceledError();
+                        break;
+                    }
                     if (fatalError) break;
 
                     if (queue.length >= maxQueueLength) {
                         const queueWaitStartedAt = performance.now();
                         queueWaitCount += 1;
                         while (queue.length >= maxQueueLength && !fatalError) {
+                            if (callbacks.isCancellationRequested?.()) {
+                                fatalError = new WebmExportCanceledError();
+                                break;
+                            }
                             await sleepMs(1);
                         }
                         queueWaitMsTotal += performance.now() - queueWaitStartedAt;
@@ -1029,6 +1053,12 @@ export async function runWebmExportJob(
                         fatalError = error instanceof Error
                             ? error
                             : new Error(`Failed to capture frame ${frame}: ${String(error)}`);
+                    }
+                    if (callbacks.isCancellationRequested?.()) {
+                        capturedItem?.videoSample.close();
+                        capturedItem?.release?.();
+                        capturedItem = null;
+                        fatalError = new WebmExportCanceledError();
                     }
                     if (capturedItem) {
                         queue.push(capturedItem);

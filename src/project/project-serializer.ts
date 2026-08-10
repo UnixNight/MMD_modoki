@@ -232,6 +232,7 @@ type ProjectExportHost = {
     getFrameGraphPostEffectStackEntries?: () => FrameGraphPostEffectStackEntry[];
     isGroundVisible: () => boolean;
     isSkydomeVisible: () => boolean;
+    isBackgroundBlack: () => boolean;
 };
 
 export function exportProjectState(host: ProjectExportHost): MmdModokiProjectFileV1 {
@@ -392,6 +393,7 @@ export function exportProjectState(host: ProjectExportHost): MmdModokiProjectFil
         viewport: {
             groundVisible: host.isGroundVisible(),
             skydomeVisible: host.isSkydomeVisible(),
+            backgroundBlack: host.isBackgroundBlack(),
             skydomeBackground: normalizeSkydomeBackgroundStyle(host.getSkydomeBackgroundStyle?.()),
             antialiasEnabled: host.antialiasEnabled,
             mirroringFloorEnabled: host.mirroringFloorEnabled,

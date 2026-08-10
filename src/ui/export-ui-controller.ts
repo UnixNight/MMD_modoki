@@ -105,6 +105,7 @@ type ExportUiElements = {
     appRoot: HTMLElement;
     busyOverlay: HTMLElement | null;
     busyText: HTMLElement | null;
+    cancelWebmExportButton: HTMLButtonElement | null;
     viewportOutputAspectSelect: HTMLSelectElement | null;
     outputStartFrameInput: HTMLInputElement | null;
     outputEndFrameInput: HTMLInputElement | null;
@@ -129,6 +130,7 @@ function resolveExportUiElements(): ExportUiElements {
         appRoot: document.getElementById("app") as HTMLElement,
         busyOverlay: document.getElementById("ui-busy-overlay"),
         busyText: document.getElementById("ui-busy-text"),
+        cancelWebmExportButton: document.getElementById("ui-cancel-webm-export") as HTMLButtonElement | null,
         viewportOutputAspectSelect: document.getElementById("viewport-output-aspect") as HTMLSelectElement | null,
         outputStartFrameInput: document.getElementById("output-start-frame") as HTMLInputElement | null,
         outputEndFrameInput: document.getElementById("output-end-frame") as HTMLInputElement | null,
@@ -148,6 +150,7 @@ function formatWebmExportPhaseLabel(phase: WebmExportProgress["phase"]): string 
         case "finalizing": return t("webm.phase.finalizing");
         case "finishing-job": return t("webm.phase.finishingJob");
         case "completed": return t("webm.phase.completed");
+        case "canceled": return t("webm.phase.canceled");
         case "failed": return t("webm.phase.failed");
         default: return phase;
     }
@@ -194,6 +197,7 @@ export class ExportUiController {
     private isWebmExportActive = false;
     private webmExportActiveCount = 0;
     private latestWebmExportProgress: WebmExportProgress | null = null;
+    private webmCancellationRequested = false;
     private backgroundExportMonitorIntervalId: number | null = null;
     private outputAspectRatio = 16 / 9;
     private isSyncingOutputSettings = false;
@@ -235,6 +239,9 @@ export class ExportUiController {
         this.setupOutputControls();
         this.setupPngSequenceExportStateBridge();
         this.setupWebmExportStateBridge();
+        this.elements.cancelWebmExportButton?.addEventListener("click", () => {
+            void this.cancelWebmExports();
+        });
         this.startBackgroundExportMonitor();
     }
 
@@ -1057,8 +1064,27 @@ export class ExportUiController {
         this.webmExportActiveCount = Math.max(0, Math.floor(state?.activeCount ?? 0));
         if (!this.isWebmExportActive) {
             this.latestWebmExportProgress = null;
+            this.webmCancellationRequested = false;
         }
         this.refreshBackgroundExportLock();
+    }
+
+    private async cancelWebmExports(): Promise<void> {
+        if (!this.isWebmExportActive || this.webmCancellationRequested) return;
+        this.webmCancellationRequested = true;
+        this.refreshBackgroundExportLock();
+        try {
+            const canceledJobCount = await window.electronAPI.cancelWebmExports();
+            if (canceledJobCount === 0) {
+                this.webmCancellationRequested = false;
+                this.refreshBackgroundExportLock();
+            }
+        } catch (error: unknown) {
+            this.webmCancellationRequested = false;
+            logError("webm", "failed to request WebM export cancellation", { error: String(error) });
+            this.showToast(t("toast.webmCancelFailed"), "error");
+            this.refreshBackgroundExportLock();
+        }
     }
 
     private applyWebmExportProgress(progress: WebmExportProgress): void {
@@ -1072,6 +1098,12 @@ export class ExportUiController {
         this.elements.appRoot.classList.toggle("ui-export-lock", active);
         this.elements.busyOverlay?.classList.toggle("hidden", !active);
         this.elements.busyOverlay?.setAttribute("aria-hidden", active ? "false" : "true");
+        const cancelButton = this.elements.cancelWebmExportButton;
+        cancelButton?.classList.toggle("hidden", !this.isWebmExportActive);
+        if (cancelButton) {
+            cancelButton.disabled = this.webmCancellationRequested;
+            cancelButton.textContent = t(this.webmCancellationRequested ? "button.cancelingRender" : "button.cancelRender");
+        }
 
         if (!active) {
             if (this.elements.busyText) {

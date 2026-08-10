@@ -635,6 +635,11 @@ async function initializeWebmExporter(searchParams: URLSearchParams): Promise<vo
   }
 
   let request: WebmExportRequest | null = null;
+  let cancellationRequested = false;
+  const removeWebmCancelListener = window.electronAPI.onWebmExportCancel(() => {
+    cancellationRequested = true;
+    setStatus("Canceling WebM export...");
+  });
 
   try {
     request = await window.electronAPI.takeWebmExportJob(jobId);
@@ -644,6 +649,8 @@ async function initializeWebmExporter(searchParams: URLSearchParams): Promise<vo
       closeExporterWindowSoon();
       return;
     }
+    cancellationRequested = cancellationRequested
+      || await window.electronAPI.isWebmExportCancellationRequested(jobId);
 
     canvas.style.width = `${request.outputWidth}px`;
     canvas.style.height = `${request.outputHeight}px`;
@@ -717,6 +724,7 @@ async function initializeWebmExporter(searchParams: URLSearchParams): Promise<vo
         setStatus(progressMessage);
         emitWebmProgress("encoding", progressMessage, encoded === total);
       },
+      isCancellationRequested: () => cancellationRequested,
     }, rendererBackend);
 
     setStatus(`Done: ${result.encodedFrames} frame(s) ${result.codec}`);
@@ -742,14 +750,15 @@ async function initializeWebmExporter(searchParams: URLSearchParams): Promise<vo
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    const canceled = err instanceof Error && err.name === "WebmExportCanceledError";
     logError("webm", "exporter job failed", {
       jobId,
       ...toLogErrorData(err),
     });
-    setStatus(`Export failed: ${message}`);
+    setStatus(canceled ? "WebM export canceled" : `Export failed: ${message}`);
     window.electronAPI.reportWebmExportProgress({
       jobId,
-      phase: "failed",
+      phase: canceled ? "canceled" : "failed",
       encoded: 0,
       total: 0,
       frame: 0,
@@ -763,5 +772,7 @@ async function initializeWebmExporter(searchParams: URLSearchParams): Promise<vo
     if (!finished) {
       closeExporterWindowSoon();
     }
+  } finally {
+    removeWebmCancelListener();
   }
 }

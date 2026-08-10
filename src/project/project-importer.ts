@@ -100,6 +100,7 @@ type ProjectImportHost = {
     setCameraExternalParentKeyframes?: (track: ProjectSerializedCameraExternalParentTrack | null) => boolean;
     setGroundVisible(visible: boolean): void;
     setSkydomeVisible(visible: boolean): void;
+    setBackgroundBlack(enabled: boolean): void;
     setSkydomeBackgroundStyle?: (style: SkydomeBackgroundStyle) => void;
     antialiasEnabled: boolean;
     mirroringFloorReflectance: number;
@@ -795,6 +796,7 @@ export async function importProjectState(
     } else {
         host.clearBackgroundMedia();
     }
+    host.setBackgroundBlack(data.viewport.backgroundBlack === true);
 
     if (lightDirectionX !== null && lightDirectionY !== null && lightDirectionZ !== null) {
         host.setLightDirection(lightDirectionX, lightDirectionY, lightDirectionZ);

@@ -220,6 +220,8 @@ const webmExportJobMap = new Map<string, WebmExportRequest>();
 const webmExportActiveCountByOwner = new Map<number, number>();
 const webmExportOwnerByJobId = new Map<string, number>();
 const webmExportCleanupByJobId = new Map<string, () => void>();
+const webmExportWindowByJobId = new Map<string, BrowserWindow>();
+const webmExportCancellationRequestedJobIds = new Set<string>();
 const webmSaveSessionMap = new Map<string, { filePath: string; handle: fs.promises.FileHandle }>();
 const ensuredDirectoryPathSet = new Set<string>();
 
@@ -1694,6 +1696,8 @@ ipcMain.handle(
         webmExportJobMap.delete(jobId);
         webmExportOwnerByJobId.delete(jobId);
         webmExportCleanupByJobId.delete(jobId);
+        webmExportWindowByJobId.delete(jobId);
+        webmExportCancellationRequestedJobIds.delete(jobId);
       }
       releaseOwnerExport();
     };
@@ -1751,6 +1755,7 @@ ipcMain.handle(
       exportWindow.setAspectRatio(sanitized.outputWidth / sanitized.outputHeight);
       exportWindow.setMenuBarVisibility(false);
       exportWindow.setContentSize(sanitized.outputWidth, sanitized.outputHeight);
+      webmExportWindowByJobId.set(jobId, exportWindow);
 
       exportWindow.on('closed', () => {
         cleanup();
@@ -1791,6 +1796,28 @@ ipcMain.handle('export:finishWebmJob', async (event, jobId: string): Promise<boo
   }
   return true;
 });
+
+ipcMain.handle('export:cancelWebmExports', async (event): Promise<number> => {
+  const ownerId = event.sender.id;
+  const jobIds = [...webmExportOwnerByJobId.entries()]
+    .filter(([, jobOwnerId]) => jobOwnerId === ownerId)
+    .map(([jobId]) => jobId);
+  for (const jobId of jobIds) {
+    webmExportCancellationRequestedJobIds.add(jobId);
+    const exportWindow = webmExportWindowByJobId.get(jobId);
+    if (exportWindow && !exportWindow.isDestroyed()) {
+      exportWindow.webContents.send('export:webmCancel');
+    }
+  }
+  if (jobIds.length > 0) {
+    writeAppLog('info', 'webm', 'cancellation requested for WebM exports', { ownerId, jobIds });
+  }
+  return jobIds.length;
+});
+
+ipcMain.handle('export:isWebmCancellationRequested', async (_event, jobId: string): Promise<boolean> => (
+  typeof jobId === 'string' && webmExportCancellationRequestedJobIds.has(jobId)
+));
 
 ipcMain.on('export:webmProgress', (_event, progress: WebmExportProgress) => {
   if (!progress || typeof progress !== 'object') return;

@@ -10,6 +10,7 @@
 - 通常のキャプチャ方式は共通 `RGBA Surface`
 - `readPixels / canvas / WebGPU copy` は比較・診断用 legacy 経路として内部に残す
 - 出力中は main UI を lock し、busy overlay に簡略進捗を表示する
+- 出力中の busy overlay には `出力をキャンセル` を表示する。キャンセル時は現在フレーム境界で停止し、partial WebM を削除する
 
 ## 2. UI
 対象ファイル:
@@ -102,6 +103,12 @@ MMD タイムラインは 30fps 基準で扱う。
 9. `Output + WebMOutputFormat + StreamTarget` を生成
 10. フレームごとに render / surface readback / encode
 11. `close -> finalize -> finishWebmExportJob`
+
+キャンセル要求は owner window から hidden exporter window へ IPC で渡す。exporter は次の安全な
+frame boundary で encode queue を止め、`Output.cancel()` と streamed save の cancel を実行する。
+
+WebM出力は project state snapshot を使う。黒背景トグルを含む、pixel に影響する viewport state は
+capture 前に isolated exporter renderer へ復元する。
 
 ## 6. capture 経路
 現行の通常経路は連番 PNG と同じ以下の surface を使う。
