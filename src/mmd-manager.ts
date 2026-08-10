@@ -4951,6 +4951,7 @@ ${beforeFogAppendBlock}
             this.applySkydomeBackgroundStyle();
         }
         this.syncSkydomeVisibility();
+        this.syncBackgroundMediaVisibility();
     }
 
     public toggleBackgroundBlack(): boolean {
@@ -5074,7 +5075,7 @@ ${beforeFogAppendBlock}
     }
 
     public isBackgroundMediaVisible(): boolean {
-        return this.backgroundMediaVisible && this.hasBackgroundMedia();
+        return this.backgroundMediaVisible && !this.backgroundBlackEnabled && this.hasBackgroundMedia();
     }
 
     public setSkydomeVisible(visible: boolean): void {
@@ -5091,6 +5092,16 @@ ${beforeFogAppendBlock}
     private syncSkydomeVisibility(): void {
         const backgroundVisible = this.skydomeVisibleValue && !this.backgroundBlackEnabled;
         this.skydome?.setEnabled(backgroundVisible);
+    }
+
+    private syncBackgroundMediaVisibility(): void {
+        const backgroundVisible = this.backgroundMediaVisible && !this.backgroundBlackEnabled;
+        if (this.backgroundImageLayer) {
+            this.backgroundImageLayer.isEnabled = backgroundVisible;
+        }
+        if (this.backgroundVideoLayer) {
+            this.backgroundVideoLayer.isEnabled = backgroundVisible;
+        }
     }
 
     private applySkydomeBackgroundStyle(): void {
@@ -5159,12 +5170,7 @@ ${beforeFogAppendBlock}
 
     public setBackgroundMediaVisible(visible: boolean): boolean {
         this.backgroundMediaVisible = Boolean(visible);
-        if (this.backgroundImageLayer) {
-            this.backgroundImageLayer.isEnabled = this.backgroundMediaVisible;
-        }
-        if (this.backgroundVideoLayer) {
-            this.backgroundVideoLayer.isEnabled = this.backgroundMediaVisible;
-        }
+        this.syncBackgroundMediaVisibility();
         return this.isBackgroundMediaVisible();
     }
 
@@ -5255,7 +5261,7 @@ ${beforeFogAppendBlock}
         this.backgroundImageLayer = nextLayer;
         this.backgroundImagePath = normalizedPath;
         this.backgroundMediaVisible = true;
-        this.backgroundImageLayer.isEnabled = true;
+        this.syncBackgroundMediaVisibility();
         previousLayer?.dispose();
         this.clearBackgroundVideo();
 
@@ -5351,7 +5357,7 @@ ${beforeFogAppendBlock}
         this.backgroundVideoCanvas = canvas;
         this.backgroundVideoPath = normalizedPath;
         this.backgroundMediaVisible = true;
-        this.backgroundVideoLayer.isEnabled = true;
+        this.syncBackgroundMediaVisibility();
         this.backgroundVideoLastSyncedTime = Number.NaN;
         this.backgroundVideoLastDrawnTime = Number.NaN;
         previousLayer?.dispose();

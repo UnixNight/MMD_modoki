@@ -2178,6 +2178,7 @@ export class UIController {
         });
         this.actionDispatcher.register("viewport.toggleBackgroundBlack", () => {
             this.sceneEnvironmentUiController?.toggleBackgroundBlack();
+            this.appMenuController?.refresh();
         });
         this.actionDispatcher.register("viewport.toggleEnvironmentBackground", () => {
             this.mmdManager.toggleEnvironmentBackgroundVisible();
