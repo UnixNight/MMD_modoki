@@ -89,6 +89,7 @@ type ProjectImportHost = {
     applyCameraAnimation(animation: object, path: string | null): void;
     getCameraDistance(): number;
     getCameraFov(): number;
+    setPerspectiveEnabled?(enabled: boolean): void;
     applyCameraTrackPose(
         target: { x: number; y: number; z: number },
         rotation: { x: number; y: number; z: number },
@@ -607,6 +608,10 @@ export async function importProjectState(
             fallbackDistance,
             fallbackFov,
         );
+    }
+
+    if (typeof data.camera?.perspectiveEnabled === "boolean") {
+        host.setPerspectiveEnabled?.(data.camera.perspectiveEnabled);
     }
 
     const cameraExternalParentTrack = data.keyframes?.cameraExternalParents ?? null;
