@@ -494,6 +494,36 @@ export class Timeline {
         return true;
     }
 
+    selectBoneTracksByName(names: readonly string[], options: { additive?: boolean } = {}): boolean {
+        const tracks = names
+            .map((name) => this.findBoneTrackIndexByName(name))
+            .filter((index): index is number => index >= 0)
+            .map((index) => this.tracks[index]);
+        if (tracks.length === 0) return false;
+
+        const previousSelectedTrackIndex = this.selectedTrackIndex;
+        this.selectedFrame = null;
+        this.selectedKeySet.clear();
+        this.selectionAnchor = null;
+
+        if (options.additive === true) {
+            for (const track of tracks) this.toggleBoneTrackSelection(track);
+        } else {
+            this.selectedBoneTrackSet = new Set(
+                tracks.map((track) => createBoneTrackSelectionKey(this.createBoneTrackSelectionRef(track))),
+            );
+        }
+
+        this.selectedTrackIndex = this.tracks.indexOf(tracks[tracks.length - 1]);
+        if (this.selectedTrackIndex !== previousSelectedTrackIndex) this.resize();
+        else {
+            this.scheduleStatic();
+            this.scheduleLabel();
+        }
+        this.emitSelectionChanged();
+        return true;
+    }
+
     // ── Resize ───────────────────────────────────────────────────────
 
     resize(): void {
@@ -900,7 +930,7 @@ export class Timeline {
             ctx.fillStyle = col.text;
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
-            ctx.fillText(track.name, 6, y + rowH / 2);
+            ctx.fillText(track.displayName ?? track.name, 6, y + rowH / 2);
             ctx.restore();
 
             ctx.fillStyle = "rgba(255,255,255,0.04)";

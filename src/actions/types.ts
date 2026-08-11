@@ -52,6 +52,7 @@ export type InterpolationAction =
 export type SelectionAction =
     | { type: "selection.cycleActiveModel"; source: ActionSource; direction: -1 | 1 }
     | { type: "selection.pickBone"; source: ActionSource; boneName: string; additive?: boolean }
+    | { type: "selection.pickBones"; source: ActionSource; boneNames: readonly string[]; additive?: boolean }
     | { type: "selection.setBone"; source: ActionSource; boneName: string | null }
     | { type: "selection.setMorphFrame"; source: ActionSource };
 

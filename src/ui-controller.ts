@@ -1662,6 +1662,14 @@ export class UIController {
                 additive: pick.additive,
             });
         };
+        this.mmdManager.onBoneVisualizerBonesPicked = (pick) => {
+            this.actionDispatcher.dispatch({
+                type: "selection.pickBones",
+                source: "viewport",
+                boneNames: pick.boneNames,
+                additive: pick.additive,
+            });
+        };
 
         this.mmdManager.onMaterialShaderStateChanged = () => {
             this.refreshShaderPanel();
@@ -2168,6 +2176,15 @@ export class UIController {
             const selected = this.bottomPanel.setSelectedBone(action.boneName);
             if (!selected) return;
             this.syncTimelineBoneSelectionFromBottomPanel(action.boneName);
+        });
+        this.actionDispatcher.register("selection.pickBones", (action) => {
+            if (this.mmdManager.getTimelineTarget() !== "model") return;
+            if (!this.timeline.selectBoneTracksByName(action.boneNames, { additive: action.additive === true })) return;
+            this.syncBoneVisualizerSelection(this.timeline.getSelectedTrack());
+            this.syncBottomBoneSelectionFromTimeline(this.timeline.getSelectedTrack());
+            this.refreshSelectedTrackRotationOverlay();
+            this.updateTimelineEditState();
+            this.updateSectionKeyframeButtons();
         });
         this.actionDispatcher.register("selection.setBone", (action) => {
             this.syncTimelineBoneSelectionFromBottomPanel(action.boneName);

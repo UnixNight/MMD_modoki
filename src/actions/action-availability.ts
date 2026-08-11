@@ -50,6 +50,8 @@ export function canExecuteEditorAction(
             return snapshot.canRedo ?? true;
         case "selection.pickBone":
             return action.boneName.length > 0;
+        case "selection.pickBones":
+            return action.boneNames.length > 0;
         case "playback.seekAdjacentKeyframe":
             return snapshot.hasSelectedTimelineTrack && snapshot.selectedTrackKeyframeCount > 0;
         case "interpolation.copy":

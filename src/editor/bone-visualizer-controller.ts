@@ -24,6 +24,13 @@ type BoneVisualizerPickPoint = {
     y: number;
 };
 
+type BoneVisualizerSelectionRectangle = {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+} | null;
+
 type BoneVisualizerHost = {
     currentMesh: Mesh | null;
     currentModel: { runtimeBones?: readonly IMmdRuntimeBone[] } | null;
@@ -38,6 +45,7 @@ type BoneVisualizerHost = {
     boneOverlayChildScreen: Vector3;
     boneOverlayParentScreen: Vector3;
     boneVisualizerPickPoints: BoneVisualizerPickPoint[];
+    boneVisualizerSelectionRectangle: BoneVisualizerSelectionRectangle;
     boneVisualizerSelectedBoneName: string | null;
     boneVisualizerSelectedBoneNames: ReadonlySet<string>;
     renderingCanvas: HTMLCanvasElement;
@@ -50,6 +58,7 @@ type BoneVisualizerHost = {
     getBoneVisualizerVisibleBoneNames?: () => ReadonlySet<string> | null;
     setBoneVisualizerSelectedBone: (boneName: string | null) => void;
     onBoneVisualizerBonePicked?: (pick: { boneName: string; additive: boolean }) => void;
+    onBoneVisualizerBonesPicked?: (pick: { boneNames: readonly string[]; additive: boolean }) => void;
 };
 
 function createBoneVisualizerPotentialBoneNameSet(
@@ -310,6 +319,7 @@ export function updateBoneVisualizer(host: BoneVisualizerHost): void {
         for (const marker of markerCommands) {
             host.boneVisualizerPickPoints.push({ boneName: marker.boneName, x: marker.x, y: marker.y });
         }
+        drawBoneVisualizerSelectionRectangle(host, ctx);
         return;
     }
 
@@ -388,6 +398,46 @@ export function updateBoneVisualizer(host: BoneVisualizerHost): void {
             host.boneVisualizerPickPoints.push({ boneName: marker.boneName, x: marker.x, y: marker.y });
         }
     }
+    drawBoneVisualizerSelectionRectangle(host, ctx);
+}
+
+export function getBoneVisualizerSelectionAtClientRectangle(
+    host: BoneVisualizerHost,
+    startClientX: number,
+    startClientY: number,
+    endClientX: number,
+    endClientY: number,
+    options: { additive?: boolean } = {},
+): void {
+    if (host._isPlaying || host.timelineTarget !== "model" || !host.getActiveModelVisibility()) return;
+    if (host.boneVisualizerTarget === null || host.boneVisualizerPickPoints.length === 0) return;
+
+    const rect = host.renderingCanvas.getBoundingClientRect();
+    const left = Math.min(startClientX, endClientX) - rect.left;
+    const right = Math.max(startClientX, endClientX) - rect.left;
+    const top = Math.min(startClientY, endClientY) - rect.top;
+    const bottom = Math.max(startClientY, endClientY) - rect.top;
+    const boneNames = host.boneVisualizerPickPoints
+        .filter((point) => point.x >= left && point.x <= right && point.y >= top && point.y <= bottom)
+        .map((point) => point.boneName);
+    if (boneNames.length === 0) return;
+
+    host.onBoneVisualizerBonesPicked?.({ boneNames, additive: options.additive === true });
+}
+
+function drawBoneVisualizerSelectionRectangle(host: BoneVisualizerHost, ctx: CanvasRenderingContext2D): void {
+    const selection = host.boneVisualizerSelectionRectangle;
+    if (!selection) return;
+
+    const left = Math.min(selection.startX, selection.endX);
+    const top = Math.min(selection.startY, selection.endY);
+    const width = Math.abs(selection.endX - selection.startX);
+    const height = Math.abs(selection.endY - selection.startY);
+    ctx.fillStyle = "rgba(110, 156, 255, 0.16)";
+    ctx.strokeStyle = "rgba(144, 184, 255, 0.92)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(left, top, width, height);
+    ctx.strokeRect(left + 0.5, top + 0.5, width, height);
 }
 
 export function tryPickBoneVisualizerAtClientPosition(
