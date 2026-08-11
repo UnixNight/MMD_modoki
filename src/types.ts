@@ -249,15 +249,20 @@ export interface ModelInfo {
     vertexCount: number;
     boneCount: number;
     boneNames: string[];
+    /** UI labels keyed by the runtime bone name; runtime binding always uses boneNames. */
+    boneDisplayNames?: Record<string, string>;
     physicsBoneNames?: string[];
     boneControlInfos?: BoneControlInfo[];
     morphCount: number;
     morphNames: string[];
+    /** UI labels keyed by the runtime morph name; runtime binding always uses morphNames. */
+    morphDisplayNames?: Record<string, string>;
     morphDisplayFrames: MorphDisplayFrameInfo[];
 }
 
 export interface BoneControlInfo {
     name: string;
+    englishName?: string;
     movable: boolean;
     rotatable: boolean;
     isIk?: boolean;
@@ -267,6 +272,7 @@ export interface BoneControlInfo {
 export interface MorphDisplayItemInfo {
     index: number;
     name: string;
+    displayName?: string;
 }
 
 export interface MorphDisplayFrameInfo {
@@ -287,6 +293,8 @@ export type TrackCategory = 'root' | 'camera' | 'semi-standard' | 'bone' | 'morp
 export interface KeyframeTrack {
     /** Bone or morph name */
     name: string;
+    /** Optional UI label; name remains the runtime binding identifier. */
+    displayName?: string;
     /** Row ordering category */
     category: TrackCategory;
     /** Frame numbers that have keyframes (sorted ascending) */

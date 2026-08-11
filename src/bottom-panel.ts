@@ -32,6 +32,7 @@ export class BottomPanel {
     private morphFrames: MorphDisplayFrameInfo[] = [];
     private boneControlMap: Map<string, BoneControlInfo> = new Map();
     private boneNames: Set<string> = new Set();
+    private boneDisplayNames: Map<string, string> = new Map();
     private activeSliderInteractions: WeakSet<HTMLInputElement> = new WeakSet();
     private currentBoneName: string | null = null;
     private multipleBoneSelectionNames: string[] = [];
@@ -64,6 +65,7 @@ export class BottomPanel {
         this.boneSliderValues.clear();
         this.boneControlMap.clear();
         this.boneNames = new Set(info.boneNames);
+        this.boneDisplayNames = new Map(Object.entries(info.boneDisplayNames ?? {}));
 
         for (const boneControlInfo of info.boneControlInfos ?? []) {
             this.boneControlMap.set(boneControlInfo.name, boneControlInfo);
@@ -91,7 +93,11 @@ export class BottomPanel {
             : info.morphNames.length > 0
                 ? [{
                     name: t("option.all"),
-                    morphs: info.morphNames.map((name, index) => ({ index, name })),
+                    morphs: info.morphNames.map((name, index) => ({
+                        index,
+                        name,
+                        displayName: info.morphDisplayNames?.[name] ?? name,
+                    })),
                 }]
                 : [];
 
@@ -126,6 +132,7 @@ export class BottomPanel {
         this.boneSliderValues.clear();
         this.boneControlMap.clear();
         this.boneNames.clear();
+        this.boneDisplayNames.clear();
         this.updateBoneSelectionSummary();
         setPanelEmptyState(this.boneContainer, t("empty.noModel"));
     }
@@ -489,8 +496,12 @@ export class BottomPanel {
             this.boneSelectionSummary.title = this.multipleBoneSelectionNames.join(", ");
             return;
         }
-        this.boneSelectionSummary.textContent = this.currentBoneName ?? "-";
-        this.boneSelectionSummary.title = this.currentBoneName ?? "";
+        const boneName = this.currentBoneName;
+        const displayName = boneName ? this.boneDisplayNames.get(boneName) ?? boneName : "-";
+        this.boneSelectionSummary.textContent = displayName;
+        this.boneSelectionSummary.title = boneName && displayName !== boneName
+            ? `${displayName} (${boneName})`
+            : boneName ?? "";
     }
 
     syncSelectedBoneSlidersFromRuntime(force = false): void {
@@ -646,12 +657,12 @@ export class BottomPanel {
     private buildMorphGroups(): Array<{
         key: "eye" | "lip" | "brow" | "other";
         label: string;
-        morphs: Array<{ frameIndex: number; index: number; name: string }>;
+        morphs: Array<{ frameIndex: number; index: number; name: string; displayName: string }>;
     }> {
         const groups: Array<{
             key: "eye" | "lip" | "brow" | "other";
             label: string;
-            morphs: Array<{ frameIndex: number; index: number; name: string }>;
+            morphs: Array<{ frameIndex: number; index: number; name: string; displayName: string }>;
         }> = [
             { key: "eye", label: t("morph.category.eye"), morphs: [] },
             { key: "lip", label: t("morph.category.lip"), morphs: [] },
@@ -663,7 +674,12 @@ export class BottomPanel {
             for (const morph of frame.morphs) {
                 const key = this.classifyMorphFrame(morph.name);
                 const group = groups.find((candidate) => candidate.key === key) ?? groups[3];
-                group.morphs.push({ frameIndex, index: morph.index, name: morph.name });
+                group.morphs.push({
+                    frameIndex,
+                    index: morph.index,
+                    name: morph.name,
+                    displayName: morph.displayName ?? morph.name,
+                });
             }
         });
         return groups;
@@ -689,7 +705,7 @@ export class BottomPanel {
         return "other";
     }
 
-    private createMorphSliderRow(morphInfo: { frameIndex: number; index: number; name: string }): HTMLElement {
+    private createMorphSliderRow(morphInfo: { frameIndex: number; index: number; name: string; displayName: string }): HTMLElement {
         const morphName = morphInfo.name;
         const morphIndex = morphInfo.index;
         const morphKey = this.getMorphControlKey(morphIndex, morphName);
@@ -705,7 +721,7 @@ export class BottomPanel {
             : "0";
 
         const rendered = createPanelSliderValueRow({
-            label: morphName,
+            label: morphInfo.displayName,
             slider,
             valueText: Number(slider.value).toFixed(2),
             legacyRowClass: "morph-slider-row",

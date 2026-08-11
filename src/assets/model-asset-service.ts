@@ -21,6 +21,7 @@ import {
 } from "../shared/mmd-material-pipeline";
 import { PbrMaterialProxy } from "../runtime/pbr-material-proxy";
 import { AdaptivePbrMaterialBuilder } from "./adaptive-pbr-material-builder";
+import { getPreferredEnglishBoneDisplayName } from "../editor/motion-bone-name-translator";
 
 const PMX_BONE_FLAG_VISIBLE = 0x0008;
 const PMX_BONE_FLAG_ROTATABLE = 0x0002;
@@ -1348,7 +1349,7 @@ export async function loadPMX(
         });
 
         const morphNames: string[] = [];
-        const morphEntries: { index: number; name: string; category: number }[] = [];
+        const morphEntries: { index: number; name: string; englishName: string; category: number }[] = [];
         const metadataMorphs = Array.isArray(mmdMetadata.morphs) ? mmdMetadata.morphs : [];
         const seenMorphNames = new Set<string>();
         for (let morphIndex = 0; morphIndex < metadataMorphs.length; morphIndex += 1) {
@@ -1357,6 +1358,7 @@ export async function loadPMX(
             morphEntries.push({
                 index: morphIndex,
                 name: morph.name,
+                englishName: morph.englishName,
                 category: typeof morph.category === "number" ? morph.category : PMX_MORPH_CATEGORY_OTHER,
             });
             if (!seenMorphNames.has(morph.name)) {
@@ -1471,6 +1473,7 @@ export async function loadPMX(
                 if (!boneControlInfos.some((info) => info.name === bone.name)) {
                     boneControlInfos.push({
                         name: bone.name,
+                        englishName: bone.englishName,
                         movable: isMovable,
                         rotatable: isRotatable,
                         isIk,
@@ -1487,6 +1490,7 @@ export async function loadPMX(
                 boneNames.push(bone.name);
                 boneControlInfos.push({
                     name: bone.name,
+                    englishName: bone.englishName,
                     movable: isMovable,
                     rotatable: isRotatable,
                     isIk,
@@ -1503,6 +1507,7 @@ export async function loadPMX(
             const morphItem = {
                 index: morphEntry.index,
                 name: morphEntry.name,
+                displayName: morphEntry.englishName.trim() || morphEntry.name,
             };
             switch (morphEntry.category) {
                 case PMX_MORPH_CATEGORY_EYE:
@@ -1535,10 +1540,19 @@ export async function loadPMX(
             vertexCount,
             boneCount,
             boneNames,
+            boneDisplayNames: Object.fromEntries(
+                boneControlInfos.map((bone) => [
+                    bone.name,
+                    getPreferredEnglishBoneDisplayName(bone.name, bone.englishName),
+                ]),
+            ),
             physicsBoneNames,
             boneControlInfos,
             morphCount: morphEntries.length,
             morphNames,
+            morphDisplayNames: Object.fromEntries(
+                morphEntries.map((morph) => [morph.name, morph.englishName.trim() || morph.name]),
+            ),
             morphDisplayFrames,
         };
 
