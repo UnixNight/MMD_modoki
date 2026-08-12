@@ -615,7 +615,16 @@ export function getActiveModelTimelineTracks(host: TimelineEditHost): KeyframeTr
         ordered.push(track);
     }
 
-    return ordered;
+    const boneDisplayNames = host.activeModelInfo.boneDisplayNames ?? {};
+    const morphDisplayNames = host.activeModelInfo.morphDisplayNames ?? {};
+    return ordered.map((track) => ({
+        ...track,
+        displayName: isVisibleBoneCategory(track.category)
+            ? boneDisplayNames[track.name] ?? track.name
+            : track.category === "morph"
+                ? morphDisplayNames[track.name] ?? track.name
+                : track.name,
+    }));
 }
 
 export function getCameraTimelineTracks(host: TimelineEditHost): KeyframeTrack[] {

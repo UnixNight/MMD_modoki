@@ -32,6 +32,7 @@ type MotionAssetHost = {
     modelKeyframeTracksByModel: WeakMap<MotionAssetRuntimeModel, Map<string, Uint32Array>>;
     mergeModelAnimations(baseAnimation: MotionAssetAnimation, animation: MotionAssetAnimation): MotionAssetAnimation;
     createOffsetModelAnimation(animation: MotionAssetAnimation, frameOffset: number): MotionAssetAnimation;
+    translateImportedModelAnimationBoneNames(animation: MotionAssetAnimation): MotionAssetAnimation;
     appendModelMotionImport(
         model: MotionAssetRuntimeModel,
         motionImport: { type: "vmd" | "vpd"; path: string; frame?: number },
@@ -120,6 +121,7 @@ export async function loadVMD(host: MotionAssetHost, filePath: string): Promise<
             URL.revokeObjectURL(blobUrl);
         }
 
+        animation = host.translateImportedModelAnimationBoneNames(animation);
         const baseAnimation = host.modelSourceAnimationsByModel.get(targetModel);
         const mergedAnimation = baseAnimation
             ? host.mergeModelAnimations(baseAnimation, animation)
@@ -203,7 +205,8 @@ export async function loadVPD(host: MotionAssetHost, filePath: string): Promise<
             uint8.byteOffset + uint8.byteLength,
         );
         const poseAnimation = host.vpdLoader.loadFromBuffer("modelPose", arrayBuffer);
-        const shiftedPoseAnimation = host.createOffsetModelAnimation(poseAnimation, loadFrame);
+        const translatedPoseAnimation = host.translateImportedModelAnimationBoneNames(poseAnimation);
+        const shiftedPoseAnimation = host.createOffsetModelAnimation(translatedPoseAnimation, loadFrame);
         const baseAnimation = host.modelSourceAnimationsByModel.get(targetModel);
         const mergedAnimation = baseAnimation
             ? host.mergeModelAnimations(baseAnimation, shiftedPoseAnimation)
