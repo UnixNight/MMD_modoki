@@ -377,6 +377,7 @@ import {
     createEditorModelMotionFromMmdAnimation,
     resolveBoneTrackKind,
 } from "./editor/mmd-animation-builder";
+import { translateAnimationBoneNamesForModel } from "./editor/motion-bone-name-translator";
 import { getPhysicsOffBoneNamesAtFrame } from "./editor/physics-bone-visibility";
 import { upsertBoneKey, type EditorBoneTrackKind } from "./editor/motion-document";
 import { bindModelAnimationToRuntime } from "./editor/runtime-animation-binder";
@@ -395,6 +396,7 @@ import {
     refreshBoneVisualizerTarget as refreshBoneVisualizerTargetImpl,
     syncBoneVisualizerVisibility as syncBoneVisualizerVisibilityImpl,
     resizeBoneOverlayCanvas as resizeBoneOverlayCanvasImpl,
+    getBoneVisualizerSelectionAtClientRectangle as getBoneVisualizerSelectionAtClientRectangleImpl,
     tryPickBoneVisualizerAtClientPosition as tryPickBoneVisualizerAtClientPositionImpl,
     updateBoneVisualizer as updateBoneVisualizerImpl,
 } from "./editor/bone-visualizer-controller";
@@ -1684,6 +1686,7 @@ ${beforeFogAppendBlock}
     private boneVisualizerSelectedBoneName: string | null = null;
     private boneVisualizerSelectedBoneNames: ReadonlySet<string> = new Set<string>();
     private boneVisualizerPickPoints: { boneName: string; x: number; y: number }[] = [];
+    private boneVisualizerSelectionRectangle: { startX: number; startY: number; endX: number; endY: number } | null = null;
     private bonePickPointerDown: { pointerId: number; clientX: number; clientY: number } | null = null;
     private captureEditorOverlaysSuppressed = false;
     private rigidBodyVisualizerEnabled = false;
@@ -2001,6 +2004,21 @@ ${beforeFogAppendBlock}
         event.preventDefault();
     };
     private readonly onCanvasPointerMove = (event: PointerEvent) => {
+        const bonePickPointerDown = this.bonePickPointerDown;
+        if (bonePickPointerDown?.pointerId === event.pointerId) {
+            const movedDistance = Math.hypot(event.clientX - bonePickPointerDown.clientX, event.clientY - bonePickPointerDown.clientY);
+            if (movedDistance > 6) {
+                const canvasRect = this.renderingCanvas.getBoundingClientRect();
+                this.boneVisualizerSelectionRectangle = {
+                    startX: bonePickPointerDown.clientX - canvasRect.left,
+                    startY: bonePickPointerDown.clientY - canvasRect.top,
+                    endX: event.clientX - canvasRect.left,
+                    endY: event.clientY - canvasRect.top,
+                };
+                this.updateBoneVisualizer();
+            }
+            return;
+        }
         const dragState = this.cameraMouseDragState;
         if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -2016,11 +2034,22 @@ ${beforeFogAppendBlock}
         if (event.button === 0) {
             const pointerDown = this.bonePickPointerDown;
             this.bonePickPointerDown = null;
+            this.boneVisualizerSelectionRectangle = null;
             if (!pointerDown || pointerDown.pointerId !== event.pointerId) return;
             if (this.isBoneGizmoPointerInteractionActive(event.clientX, event.clientY)) return;
 
             const movedDistance = Math.hypot(event.clientX - pointerDown.clientX, event.clientY - pointerDown.clientY);
-            if (movedDistance > 6) return;
+            if (movedDistance > 6) {
+                this.getBoneVisualizerSelectionAtClientRectangle(
+                    pointerDown.clientX,
+                    pointerDown.clientY,
+                    event.clientX,
+                    event.clientY,
+                    { additive: event.shiftKey },
+                );
+                this.updateBoneVisualizer();
+                return;
+            }
 
             this.tryPickBoneVisualizerAtClientPosition(event.clientX, event.clientY, { additive: event.shiftKey });
             return;
@@ -2039,6 +2068,8 @@ ${beforeFogAppendBlock}
     };
     private readonly onCanvasPointerCancel = (event?: PointerEvent) => {
         this.bonePickPointerDown = null;
+        this.boneVisualizerSelectionRectangle = null;
+        this.updateBoneVisualizer();
         if (!event || !this.cameraMouseDragState || this.cameraMouseDragState.pointerId === event.pointerId) {
             this.cameraMouseDragState = null;
         }
@@ -2293,6 +2324,7 @@ ${beforeFogAppendBlock}
     public onAudioLoaded: ((name: string) => void) | null = null;
     public onPhysicsStateChanged: ((enabled: boolean, available: boolean) => void) | null = null;
     public onBoneVisualizerBonePicked: ((pick: { boneName: string; additive: boolean }) => void) | null = null;
+    public onBoneVisualizerBonesPicked: ((pick: { boneNames: readonly string[]; additive: boolean }) => void) | null = null;
     public onBoneTransformEditStarted: ((boneName: string) => void) | null = null;
     public onBoneTransformEdited: ((boneName: string) => void) | null = null;
     public onBoneTransformEditCommitted: ((boneName: string) => void) | null = null;
@@ -4684,6 +4716,22 @@ ${beforeFogAppendBlock}
         options: { additive?: boolean } = {},
     ): void {
         return tryPickBoneVisualizerAtClientPositionImpl(this, clientX, clientY, options);
+    }
+    private getBoneVisualizerSelectionAtClientRectangle(
+        startClientX: number,
+        startClientY: number,
+        endClientX: number,
+        endClientY: number,
+        options: { additive?: boolean } = {},
+    ): void {
+        return getBoneVisualizerSelectionAtClientRectangleImpl(
+            this,
+            startClientX,
+            startClientY,
+            endClientX,
+            endClientY,
+            options,
+        );
     }
     private resolveBoneVisualizerStyle(
         boneInfo: BoneControlInfo | undefined,
@@ -8119,6 +8167,18 @@ ${beforeFogAppendBlock}
 
     async loadVMD(filePath: string): Promise<MotionInfo | null> {
         return loadVMDImpl(this, filePath);
+    }
+
+    public translateImportedModelAnimationBoneNames(animation: MmdAnimation): MmdAnimation {
+        const result = translateAnimationBoneNamesForModel(animation, this.activeModelInfo);
+        if (result.translatedBoneTrackCount > 0 || result.translatedIkStateCount > 0) {
+            logInfo("asset", "motion bone names translated for active model", {
+                animation: animation.name,
+                translatedBoneTrackCount: result.translatedBoneTrackCount,
+                translatedIkStateCount: result.translatedIkStateCount,
+            });
+        }
+        return result.animation;
     }
 
     async loadVPD(filePath: string): Promise<MotionInfo | null> {
