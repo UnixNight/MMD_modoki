@@ -9,6 +9,7 @@ import { logError, logInfo } from "../app-logger";
 import type { MmdManager } from "../mmd-manager";
 import { PngEncoderWebWorkerPool } from "../output/png-encoder-web-worker-pool";
 import { scaleExportDimensions } from "../output/export-dimensions";
+import { selectWebmExportRendererBackend } from "../output/webm-export-reliability";
 import type { EditorAction } from "../actions/types";
 import type {
     MmdModokiProjectFileV1,
@@ -602,6 +603,12 @@ export class ExportUiController {
             outputSettings.qualityScale,
         );
         const totalOutputFrames = Math.max(1, Math.round((totalTimelineFrames / 30) * outputSettings.fps));
+        const rendererDecision = selectWebmExportRendererBackend({
+            width: captureDimensions.width,
+            height: captureDimensions.height,
+            fps: outputSettings.fps,
+            totalFrames: totalOutputFrames,
+        });
         logInfo("webm", "export requested", {
             startFrame,
             endFrame,
@@ -611,6 +618,8 @@ export class ExportUiController {
             outputWidth: captureDimensions.width,
             outputHeight: captureDimensions.height,
             qualityScale: outputSettings.qualityScale,
+            rendererBackend: rendererDecision.backend,
+            rendererSelectionReason: rendererDecision.reason,
         });
         const defaultFileName = this.buildWebmFileName(
             captureDimensions.width,
@@ -653,6 +662,7 @@ export class ExportUiController {
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,
             captureMode,
+            rendererBackend: rendererDecision.backend,
             initialPhysicsModels: initialPhysicsState?.models.length ?? 0,
             initialPhysicsFrame: initialPhysicsState?.capturedFrame ?? null,
             skippedInitialPhysicsFrame: capturedPhysicsState && !initialPhysicsState
@@ -673,6 +683,7 @@ export class ExportUiController {
             audioFilePath: includeAudio ? audioFilePath : null,
             preferredVideoCodec,
             captureMode,
+            rendererBackend: rendererDecision.backend,
             initialPhysicsState,
         });
 
@@ -688,7 +699,11 @@ export class ExportUiController {
             totalOutputFrames,
         });
         this.setStatus("WebM export started", false);
-        this.showToast(`WebM export started (${totalOutputFrames} frames)`, "success");
+        if (rendererDecision.reason === "sustained-uhd-high-fps") {
+            this.showToast(t("toast.webmCompatibilityRenderer"), "success");
+        } else {
+            this.showToast(`WebM export started (${totalOutputFrames} frames)`, "success");
+        }
     }
 
     private sanitizeFileNameSegment(value: string): string {
@@ -1097,8 +1112,24 @@ export class ExportUiController {
     }
 
     private applyWebmExportProgress(progress: WebmExportProgress): void {
-        if (!this.isWebmExportActive) return;
+        const isTerminal = progress.phase === "failed" || progress.phase === "canceled" || progress.phase === "completed";
+        if (!this.isWebmExportActive && !isTerminal) return;
         this.latestWebmExportProgress = progress;
+        if (progress.phase === "failed") {
+            const frame = Math.max(progress.startFrame ?? 0, Math.floor(progress.frame));
+            const message = progress.failureCode === "gpu-device-lost"
+                ? t("toast.webmGpuDeviceLost", { frame })
+                : t("toast.webmExportFailed", { frame });
+            logError("webm", "export failure shown to user", {
+                jobId: progress.jobId,
+                failureCode: progress.failureCode ?? "unknown",
+                frame,
+                encoded: progress.encoded,
+                total: progress.total,
+            });
+            this.setStatus(message, false);
+            this.showToast(message, "error");
+        }
         this.refreshBackgroundExportLock();
     }
 

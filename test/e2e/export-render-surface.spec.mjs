@@ -117,6 +117,7 @@ test("PNG連番とWebMが共通RGBA surfaceから書き出せる", async () => {
         includeAudio: false,
         preferredVideoCodec: "vp8",
         captureMode: "rgba-surface",
+        rendererBackend: "webgl2",
       });
     }, { outputFilePath: webmPath });
 

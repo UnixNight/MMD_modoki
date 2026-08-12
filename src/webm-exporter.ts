@@ -35,6 +35,15 @@ export class WebmExportCanceledError extends Error {
     }
 }
 
+export class WebmGpuDeviceLostError extends Error {
+    constructor(message?: string) {
+        super(message?.trim().length
+            ? `WebM GPU device lost: ${message}`
+            : "WebM GPU device lost during export");
+        this.name = "WebmGpuDeviceLostError";
+    }
+}
+
 export interface WebmExportResult {
     encodedFrames: number;
     totalFrames: number;
@@ -87,6 +96,41 @@ type WebGpuCaptureEngineInternals = {
     _colorFormat?: unknown;
     getRenderWidth: (useScreen?: boolean) => number;
     getRenderHeight: (useScreen?: boolean) => number;
+};
+
+type WebGpuDeviceLostInfoLike = {
+    message?: unknown;
+    reason?: unknown;
+};
+
+type WebGpuDeviceWithLostPromise = {
+    lost?: Promise<WebGpuDeviceLostInfoLike>;
+};
+
+type WebGpuDeviceLossMonitor = {
+    getError: () => WebmGpuDeviceLostError | null;
+    throwIfLost: () => void;
+};
+
+const createWebGpuDeviceLossMonitor = (engine: AbstractEngine): WebGpuDeviceLossMonitor => {
+    let lossError: WebmGpuDeviceLostError | null = null;
+    if (engine instanceof WebGPUEngine) {
+        const device = (engine as unknown as { _device?: WebGpuDeviceWithLostPromise })._device;
+        void device?.lost?.then((info) => {
+            const message = typeof info.message === "string" ? info.message : "";
+            lossError = new WebmGpuDeviceLostError(message);
+            window.electronAPI.logError("webm", "WebGPU device lost during export", {
+                reason: typeof info.reason === "string" ? info.reason : "unknown",
+                message,
+            });
+        });
+    }
+    return {
+        getError: () => lossError,
+        throwIfLost: () => {
+            if (lossError) throw lossError;
+        },
+    };
 };
 
 const isCaptureDiagnosticsEnabled = (): boolean => (
@@ -745,8 +789,12 @@ export async function runWebmExportJob(
 
     updateStatus(callbacks, "Initializing WebM export renderer...", "initializing");
     const mmdManager = await MmdManager.create(canvas, enginePreference);
+    const deviceLossMonitor = createWebGpuDeviceLossMonitor(
+        (mmdManager as unknown as ExportRuntimeInternals).engine,
+    );
 
     try {
+        deviceLossMonitor.throwIfLost();
         throwIfCancellationRequested();
         const exportRuntimeInternals = mmdManager as unknown as ExportRuntimeInternals & {
             engine: AbstractEngine & {
@@ -1005,6 +1053,7 @@ export async function runWebmExportJob(
             try {
                 let playbackStarted = false;
                 for (let outputFrameIndex = 0; outputFrameIndex < totalFrames; outputFrameIndex += 1) {
+                    deviceLossMonitor.throwIfLost();
                     if (callbacks.isCancellationRequested?.()) {
                         fatalError = new WebmExportCanceledError();
                         break;
@@ -1066,9 +1115,10 @@ export async function runWebmExportJob(
                             sampleCreationMsTotal += timing.sampleCreationMs;
                         }
                     } catch (error: unknown) {
-                        fatalError = error instanceof Error
-                            ? error
-                            : new Error(`Failed to capture frame ${frame}: ${String(error)}`);
+                        fatalError = deviceLossMonitor.getError()
+                            ?? (error instanceof Error
+                                ? error
+                                : new Error(`Failed to capture frame ${frame}: ${String(error)}`));
                     }
                     if (callbacks.isCancellationRequested?.()) {
                         capturedItem?.videoSample.close();
@@ -1174,6 +1224,8 @@ export async function runWebmExportJob(
             }
             frameCapture.dispose();
         }
+    } catch (error: unknown) {
+        throw deviceLossMonitor.getError() ?? error;
     } finally {
         mmdManager.setExternalPlaybackSimulationEnabled(false);
         // This exporter runs in a dedicated hidden window. Synchronous Babylon / physics disposal can stall

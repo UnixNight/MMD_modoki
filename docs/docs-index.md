@@ -265,6 +265,7 @@ PBR Skin SSSは描画経路の動作と不具合対策まで確認したが、�
 
 ## 出力 / エンコード
 
+- [WebM 出力の GPU loss 対応 2026-08-11](./webm-export-gpu-loss-recovery-2026-08-11.md)
 - [PNG 連番出力仕様](./png-sequence-export-spec.md)
 - [WebM 出力 現行仕様 / 実装](./webm-export-current-spec-2026-03-13.md)
 - [WebM 動画書き出し速度調査レポート](./webm-export-performance-analysis-2026-04-21.md)
