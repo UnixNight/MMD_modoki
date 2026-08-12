@@ -508,6 +508,9 @@ const sanitizeWebmExportRequest = (request: WebmExportRequest): WebmExportReques
     || request.captureMode === 'readpixels'
     ? request.captureMode
     : 'rgba-surface';
+  const rendererBackend = request.rendererBackend === 'webgpu' || request.rendererBackend === 'webgl2'
+    ? request.rendererBackend
+    : 'auto';
   const diagnosticQueueLimit = isE2eMode
     && typeof request.diagnosticQueueLimit === 'number'
     && Number.isFinite(request.diagnosticQueueLimit)
@@ -532,6 +535,7 @@ const sanitizeWebmExportRequest = (request: WebmExportRequest): WebmExportReques
     audioFilePath,
     preferredVideoCodec,
     captureMode,
+    rendererBackend,
     initialPhysicsState: sanitizeWebmInitialPhysicsState(request.initialPhysicsState),
     diagnosticQueueLimit,
   };
@@ -1728,6 +1732,7 @@ ipcMain.handle(
         includeAudio: sanitized.includeAudio,
         audioFilePath: sanitized.audioFilePath,
         preferredVideoCodec: sanitized.preferredVideoCodec,
+        rendererBackend: sanitized.rendererBackend,
         ownerWebContentsId: ownerWindow?.webContents.id,
       });
 
@@ -1761,7 +1766,13 @@ ipcMain.handle(
         cleanup();
       });
 
-      await loadEditorWindow(exportWindow, { mode: 'webm-exporter', jobId });
+      await loadEditorWindow(exportWindow, {
+        mode: 'webm-exporter',
+        jobId,
+        ...(sanitized.rendererBackend && sanitized.rendererBackend !== 'auto'
+          ? { rendererBackend: sanitized.rendererBackend }
+          : {}),
+      });
       writeAppLog('debug', 'webm', 'WebM export window loaded', { jobId });
 
       return { jobId };

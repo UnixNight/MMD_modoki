@@ -817,11 +817,14 @@ export interface WebmExportRequest {
     audioFilePath?: string | null;
     preferredVideoCodec?: "auto" | "vp8" | "vp9";
     captureMode?: WebmCaptureMode;
+    rendererBackend?: WebmRendererBackend;
     initialPhysicsState?: WebmInitialPhysicsState | null;
     diagnosticQueueLimit?: number;
 }
 
 export type WebmCaptureMode = "rgba-surface" | "readpixels" | "canvas" | "webgpu-copy";
+export type WebmRendererBackend = "auto" | "webgpu" | "webgl2";
+export type WebmExportFailureCode = "gpu-device-lost" | "unknown";
 
 export interface WebmExportLaunchResult {
     jobId: string;
@@ -871,6 +874,7 @@ export interface WebmExportProgress {
     endFrame?: number;
     captured?: number;
     message?: string;
+    failureCode?: WebmExportFailureCode;
     timestampMs: number;
     diagnostics?: WebmExportDiagnostics;
 }

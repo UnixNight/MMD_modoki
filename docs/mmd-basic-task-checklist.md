@@ -50,6 +50,7 @@
 - [x] FrameGraph 効果スタックで Bloom / DoF / LUT / SSR / SSAO / Luminous / Offset Shadow / Offset Rim などを追加 / 並べ替え / 保存復元
 - [x] PNG 出力
 - [x] WebM 出力
+- [x] 長時間 4K/60 WebM の GPU loss を検出し、互換 renderer の事前選択と平易な失敗通知を追加（[対応メモ](./webm-export-gpu-loss-recovery-2026-08-11.md)）
 - [x] 連番 PNG / WebM の出力レンダリング経路を共通 RGBA Surface へ統合（[計画と進捗](./export-render-surface-unification-plan-2026-08-09.md)）
 - [x] 単発 PNG を共通 RGBA Surface へ移行し、legacy screenshot / compositor snapshot 経路を整理
 - [x] 共通 RGBA Surface の空シーン・1080p・100フレーム性能を測定（[性能評価](./export-rgba-performance-evaluation-2026-08-09.md)）
